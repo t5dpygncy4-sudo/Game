@@ -7,19 +7,20 @@ export default function StatusBar() {
   const status = useGameStore((s) => s.status);
   const history = useGameStore((s) => s.history);
   const mode = useGameStore((s) => s.mode);
+  const playerColor = useGameStore((s) => s.playerColor);
   const aiThinking = useGameStore((s) => s.aiThinking);
 
   const finished = status === 'redWin' || status === 'blackWin';
   const isCheck = status === 'check';
 
   const turnLabel = turn === 'red' ? '红方' : '黑方';
-  const turnColor = turn === 'red' ? 'text-cinnabar-400' : 'text-paper-100';
+  const turnColor = turn === 'red' ? 'text-cinnabar-400' : 'text-jade-300';
 
   let resultText = '';
   if (status === 'redWin') resultText = '红方胜';
   if (status === 'blackWin') resultText = '黑方胜';
 
-  const aiTurn = mode === 'pve' && turn === 'black';
+  const aiTurn = mode === 'pve' && turn !== playerColor;
 
   return (
     <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-ink-600/60 bg-ink-800/70 px-4 py-3 backdrop-blur">
@@ -27,7 +28,7 @@ export default function StatusBar() {
         <span
           className={cn(
             'inline-block h-3 w-3 rounded-full transition-colors',
-            finished ? 'bg-gold-400' : aiThinking ? 'bg-cinnabar-400' : turn === 'red' ? 'bg-cinnabar-500' : 'bg-ink-600',
+            finished ? 'bg-gold-400' : aiThinking ? 'bg-cinnabar-400' : turn === 'red' ? 'bg-cinnabar-500' : 'bg-jade-500',
             !finished && !aiThinking && 'animate-pulse',
             aiThinking && 'animate-pulse',
           )}

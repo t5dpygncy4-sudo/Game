@@ -18,6 +18,7 @@ interface GameStore {
   lastMove: Move | null;
   flipped: boolean;
   mode: GameMode;
+  playerColor: Color;
   difficulty: Difficulty;
   aiThinking: boolean;
   muted: boolean;
@@ -26,6 +27,7 @@ interface GameStore {
   newGame: () => void;
   flipBoard: () => void;
   setMode: (mode: GameMode) => void;
+  setPlayerColor: (c: Color) => void;
   setDifficulty: (d: Difficulty) => void;
   toggleMute: () => void;
   requestAIMove: () => void;
@@ -40,7 +42,7 @@ function applyMoveInternal(
   from: Position,
   to: Position,
 ): Partial<GameStore> | null {
-  const { board, turn, history } = state;
+  const { board, turn, history, mode, playerColor } = state;
   const movingPiece = board[from.row][from.col];
   if (!movingPiece) return null;
   const captured = board[to.row][to.col] ?? undefined;
@@ -56,8 +58,12 @@ function applyMoveInternal(
 
   let sound: SoundType = captured ? 'capture' : 'move';
   if (status === 'redWin' || status === 'blackWin') {
-    const humanWon = state.mode === 'pve' ? status === 'redWin' : false;
-    sound = state.mode === 'pve' ? (humanWon ? 'win' : 'lose') : 'win';
+    if (mode === 'pve') {
+      const humanWon = (status === 'redWin' && playerColor === 'red') || (status === 'blackWin' && playerColor === 'black');
+      sound = humanWon ? 'win' : 'lose';
+    } else {
+      sound = 'win';
+    }
   } else if (status === 'check') {
     sound = 'check';
   }
@@ -84,6 +90,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   lastMove: null,
   flipped: false,
   mode: 'pvp',
+  playerColor: 'red',
   difficulty: 'advanced',
   aiThinking: false,
   muted: false,
@@ -92,7 +99,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const state = get();
     if (state.status === 'redWin' || state.status === 'blackWin') return;
     if (state.aiThinking) return;
-    if (state.mode === 'pve' && state.turn === 'black') return;
+    if (state.mode === 'pve' && state.turn !== state.playerColor) return;
 
     const { board, selected, legalMoves, turn } = state;
     const piece = board[pos.row][pos.col];
@@ -160,6 +167,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   newGame: () => {
+    const { mode, playerColor } = get();
+    const flipped = mode === 'pve' && playerColor === 'black';
     set({
       board: createInitialBoard(),
       turn: 'red',
@@ -169,6 +178,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       status: 'playing',
       lastMove: null,
       aiThinking: false,
+      flipped,
     });
   },
 
@@ -177,6 +187,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setMode: (mode) => {
+    const { playerColor } = get();
+    const flipped = mode === 'pve' && playerColor === 'black';
     set({
       mode,
       board: createInitialBoard(),
@@ -187,6 +199,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       status: 'playing',
       lastMove: null,
       aiThinking: false,
+      flipped,
+    });
+  },
+
+  setPlayerColor: (playerColor) => {
+    const { mode } = get();
+    const flipped = mode === 'pve' && playerColor === 'black';
+    set({
+      playerColor,
+      board: createInitialBoard(),
+      turn: 'red',
+      history: [],
+      selected: null,
+      legalMoves: [],
+      status: 'playing',
+      lastMove: null,
+      aiThinking: false,
+      flipped,
     });
   },
 
@@ -203,7 +233,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   requestAIMove: () => {
     const state = get();
     if (state.mode !== 'pve') return;
-    if (state.turn !== 'black') return;
+    const aiColor: Color = state.playerColor === 'red' ? 'black' : 'red';
+    if (state.turn !== aiColor) return;
     if (state.status === 'redWin' || state.status === 'blackWin') return;
     if (state.aiThinking) return;
 
@@ -211,14 +242,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     setTimeout(() => {
       const current = get();
-      if (current.turn !== 'black' || current.mode !== 'pve') {
+      const currentAiColor: Color = current.playerColor === 'red' ? 'black' : 'red';
+      if (current.turn !== currentAiColor || current.mode !== 'pve') {
         set({ aiThinking: false });
         return;
       }
-      const best = findBestMove(current.board, 'black', current.difficulty);
+      const best = findBestMove(current.board, currentAiColor, current.difficulty);
       if (!best) {
-        playSound('win');
-        set({ aiThinking: false, status: 'redWin', selected: null, legalMoves: [] });
+        const aiLost = currentAiColor === 'red' ? 'blackWin' : 'redWin';
+        const humanWon = aiLost === 'redWin' ? current.playerColor === 'red' : current.playerColor === 'black';
+        playSound(humanWon ? 'win' : 'lose');
+        set({ aiThinking: false, status: aiLost, selected: null, legalMoves: [] });
         return;
       }
       const result = applyMoveInternal(current, best.from, best.to);

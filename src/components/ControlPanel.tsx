@@ -1,5 +1,6 @@
 import { useGameStore } from '@/store/gameStore';
 import type { Difficulty } from '@/game/ai';
+import type { Color } from '@/game/types';
 import {
   RotateCcw,
   Undo2,
@@ -11,6 +12,8 @@ import {
   Users,
   Cpu,
   Loader2,
+  Swords,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +27,11 @@ const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
   { value: 'master', label: '大师', desc: '深搜·凌厉' },
 ];
 
+const SIDES: { value: Color; label: string; icon: typeof Swords }[] = [
+  { value: 'red', label: '执红', icon: Swords },
+  { value: 'black', label: '执黑', icon: Shield },
+];
+
 export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
   const newGame = useGameStore((s) => s.newGame);
   const undo = useGameStore((s) => s.undo);
@@ -31,10 +39,12 @@ export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
   const history = useGameStore((s) => s.history);
   const status = useGameStore((s) => s.status);
   const mode = useGameStore((s) => s.mode);
+  const playerColor = useGameStore((s) => s.playerColor);
   const difficulty = useGameStore((s) => s.difficulty);
   const muted = useGameStore((s) => s.muted);
   const aiThinking = useGameStore((s) => s.aiThinking);
   const setMode = useGameStore((s) => s.setMode);
+  const setPlayerColor = useGameStore((s) => s.setPlayerColor);
   const setDifficulty = useGameStore((s) => s.setDifficulty);
   const toggleMute = useGameStore((s) => s.toggleMute);
 
@@ -97,6 +107,27 @@ export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
       {/* 难度选择（仅人机模式） */}
       {mode === 'pve' && (
         <div className="flex flex-col gap-1.5 animate-slide-up">
+          <span className="text-[11px] uppercase tracking-widest text-gold-500/60">执子选择</span>
+          <div className="grid grid-cols-2 gap-1.5">
+            {SIDES.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setPlayerColor(value)}
+                className={cn(
+                  'flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-all',
+                  playerColor === value
+                    ? value === 'red'
+                      ? 'bg-cinnabar-600 text-paper-50 shadow'
+                      : 'bg-ink-600 text-paper-100 shadow ring-1 ring-paper-200/30'
+                    : 'border border-ink-500/60 bg-ink-700/40 text-paper-200/70 hover:border-gold-500/40',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
           <span className="text-[11px] uppercase tracking-widest text-gold-500/60">AI 难度</span>
           <div className="grid grid-cols-3 gap-1.5">
             {DIFFICULTIES.map((d) => (
