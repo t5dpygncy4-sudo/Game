@@ -102,30 +102,30 @@ export default function BoardGrid() {
         <line key={`b-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#4a3520" strokeWidth={1.4} strokeLinecap="round" />
       ))}
 
-      {/* 楚河汉界 */}
+      {/* 楚河汉界 - 古印体 */}
       <text
         x={vx(1.6)}
         y={vy(4.5)}
-        fill="#6b4a28"
-        fontSize={32}
-        fontFamily='"ZCOOL XiaoWei", "STKaiti", "KaiTi", "楷体", serif'
-        letterSpacing={12}
+        fill="#5a3a1e"
+        fontSize={34}
+        fontFamily='"ZCOOL XiaoWei", "STKaiti", "KaiTi", "楷体", "STSong", "宋体", serif'
+        letterSpacing={14}
         textAnchor="middle"
         dominantBaseline="central"
-        opacity={0.8}
+        opacity={0.85}
       >
         楚 河
       </text>
       <text
         x={vx(6.4)}
         y={vy(4.5)}
-        fill="#6b4a28"
-        fontSize={32}
-        fontFamily='"ZCOOL XiaoWei", "STKaiti", "KaiTi", "楷体", serif'
-        letterSpacing={12}
+        fill="#5a3a1e"
+        fontSize={34}
+        fontFamily='"ZCOOL XiaoWei", "STKaiti", "KaiTi", "楷体", "STSong", "宋体", serif'
+        letterSpacing={14}
         textAnchor="middle"
         dominantBaseline="central"
-        opacity={0.8}
+        opacity={0.85}
       >
         汉 界
       </text>
