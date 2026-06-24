@@ -107,12 +107,12 @@ export default function BoardGrid() {
         x={vx(1.6)}
         y={vy(4.5)}
         fill="#6b4a28"
-        fontSize={30}
-        fontFamily='"Ma Shan Zheng", "STKaiti", "KaiTi", serif'
-        letterSpacing={10}
+        fontSize={32}
+        fontFamily='"ZCOOL XiaoWei", "STKaiti", "KaiTi", "楷体", serif'
+        letterSpacing={12}
         textAnchor="middle"
         dominantBaseline="central"
-        opacity={0.78}
+        opacity={0.8}
       >
         楚 河
       </text>
@@ -120,14 +120,14 @@ export default function BoardGrid() {
         x={vx(6.4)}
         y={vy(4.5)}
         fill="#6b4a28"
-        fontSize={30}
-        fontFamily='"Ma Shan Zheng", "STKaiti", "KaiTi", serif'
-        letterSpacing={10}
+        fontSize={32}
+        fontFamily='"ZCOOL XiaoWei", "STKaiti", "KaiTi", "楷体", serif'
+        letterSpacing={12}
         textAnchor="middle"
         dominantBaseline="central"
-        opacity={0.78}
+        opacity={0.8}
       >
-        漢 界
+        汉 界
       </text>
     </svg>
   );
