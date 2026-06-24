@@ -90,18 +90,3 @@ body {
 .scroll-thin::-webkit-scrollbar-thumb:hover {
   background: rgba(201, 169, 97, 0.5);
 }
-
-@keyframes slide-in {
-  0% {
-    transform: scale(0.5);
-    opacity: 0.3;
-  }
-  60% {
-    transform: scale(1.08);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
