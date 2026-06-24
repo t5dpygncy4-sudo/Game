@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Noto Serif SC", "Songti SC", "SimSun", "宋体", serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: #15120e;
+  background-image:
+    radial-gradient(circle at 18% 12%, rgba(201, 169, 97, 0.08), transparent 42%),
+    radial-gradient(circle at 84% 88%, rgba(192, 57, 43, 0.07), transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(38, 32, 25, 0.6), rgba(15, 13, 10, 0.95));
+  color: #ece3cf;
+  overflow-x: hidden;
+}
+
+/* 棋盘宣纸纹理 */
+.paper-texture {
+  background-color: #f0e0b8;
+  background-image:
+    radial-gradient(circle at 30% 20%, rgba(212, 175, 82, 0.18), transparent 55%),
+    radial-gradient(circle at 75% 80%, rgba(160, 120, 60, 0.12), transparent 50%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(120, 90, 50, 0.025) 0px,
+      rgba(120, 90, 50, 0.025) 2px,
+      transparent 2px,
+      transparent 6px
+    );
+}
+
+/* 滚动条 */
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(201, 169, 97, 0.3);
+  border-radius: 3px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(201, 169, 97, 0.5);
+}
+
+/* 棋子文字 */
+.piece-char {
+  font-family: "Ma Shan Zheng", "STKaiti", "KaiTi", "楷体", serif;
+  font-weight: 700;
+  user-select: none;
+}

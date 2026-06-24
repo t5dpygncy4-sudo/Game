@@ -1,0 +1,49 @@
+import { useGameStore } from '@/store/gameStore';
+import { cn } from '@/lib/utils';
+
+export default function StatusBar() {
+  const turn = useGameStore((s) => s.turn);
+  const status = useGameStore((s) => s.status);
+  const history = useGameStore((s) => s.history);
+
+  const finished = status === 'redWin' || status === 'blackWin';
+  const isCheck = status === 'check';
+
+  const turnLabel = turn === 'red' ? '红方' : '黑方';
+  const turnColor = turn === 'red' ? 'text-cinnabar-400' : 'text-paper-100';
+
+  let resultText = '';
+  if (status === 'redWin') resultText = '红方胜';
+  if (status === 'blackWin') resultText = '黑方胜';
+
+  return (
+    <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-ink-600/60 bg-ink-800/70 px-4 py-3 backdrop-blur">
+      <div className="flex items-center gap-3">
+        <span
+          className={cn(
+            'inline-block h-3 w-3 rounded-full transition-colors',
+            finished ? 'bg-gold-400' : turn === 'red' ? 'bg-cinnabar-500' : 'bg-ink-700',
+            !finished && 'animate-pulse',
+          )}
+        />
+        <div className="flex flex-col leading-tight">
+          <span className="text-[11px] uppercase tracking-widest text-gold-500/70">行棋方</span>
+          <span className={cn('font-display text-lg', finished ? 'text-gold-300' : turnColor)}>
+            {finished ? resultText : turnLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {isCheck && (
+          <span className="animate-slide-up rounded-md bg-cinnabar-600/30 px-3 py-1 text-sm font-bold text-cinnabar-400 ring-1 ring-cinnabar-500/50">
+            将军！
+          </span>
+        )}
+        <span className="rounded-md bg-ink-700/60 px-3 py-1 text-sm text-paper-200/80">
+          第 {Math.floor(history.length / 2) + 1} 回合
+        </span>
+      </div>
+    </div>
+  );
+}
