@@ -18,7 +18,7 @@ for (const file of assetFiles) {
       `<script[^>]*src=["']/assets/${esc(file)}["'][^>]*></script>`,
       'g'
     );
-    html = html.replace(re, () => `<script type="module">\n${content}\n</script>`);
+    html = html.replace(re, () => `<script defer>\n${content}\n</script>`);
   } else if (file.endsWith('.css')) {
     const re = new RegExp(
       `<link[^>]*href=["']/assets/${esc(file)}["'][^>]*>`,
