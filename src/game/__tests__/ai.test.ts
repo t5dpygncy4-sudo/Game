@@ -67,4 +67,15 @@ describe('AI 基础', () => {
     findBestMove(board, 'black' as Color, 'beginner');
     expect(board).toEqual(snapshot);
   });
+
+  it('AI 被绝杀（无合法走法）时返回 null 即认输', () => {
+    const board = createInitialBoard();
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) board[r][c] = null;
+    board[0][3] = { type: 'king', color: 'black' };
+    board[0][2] = { type: 'chariot', color: 'red' };
+    board[0][4] = { type: 'chariot', color: 'red' };
+    board[2][3] = { type: 'king', color: 'red' };
+    const move = findBestMove(board, 'black' as Color, 'master');
+    expect(move).toBeNull();
+  });
 });

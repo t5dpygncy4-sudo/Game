@@ -217,7 +217,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
       const best = findBestMove(current.board, 'black', current.difficulty);
       if (!best) {
-        set({ aiThinking: false });
+        playSound('win');
+        set({ aiThinking: false, status: 'redWin', selected: null, legalMoves: [] });
         return;
       }
       const result = applyMoveInternal(current, best.from, best.to);

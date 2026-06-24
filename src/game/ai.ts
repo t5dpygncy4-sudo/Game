@@ -1,6 +1,7 @@
 import type { Board, Color, PieceType, Position } from './types';
 import { COLS, ROWS, crossedRiver } from './constants';
 import { getPseudoMoves } from './moves';
+import { isInCheck } from './judge';
 
 export type Difficulty = 'beginner' | 'advanced' | 'master';
 
@@ -188,6 +189,27 @@ function generateMoves(board: Board, color: Color): SearchMove[] {
   return moves;
 }
 
+function generateLegalMoves(board: Board, color: Color): SearchMove[] {
+  const moves: SearchMove[] = [];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const piece = board[row][col];
+      if (!piece || piece.color !== color) continue;
+      const from = { col, row };
+      const targets = getPseudoMoves(board, from);
+      for (const to of targets) {
+        const target = board[to.row][to.col];
+        const move: SearchMove = { from, to, captured: target ? { type: target.type, color: target.color } : null };
+        makeMove(board, move);
+        const stillSafe = !isInCheck(board, color);
+        unmakeMove(board, move);
+        if (stillSafe) moves.push(move);
+      }
+    }
+  }
+  return moves;
+}
+
 function orderMoves(moves: SearchMove[]): SearchMove[] {
   return moves.slice().sort((a, b) => {
     const av = a.captured ? PIECE_VALUE[a.captured.type] : 0;
@@ -251,7 +273,7 @@ function minimax(
 export function findBestMove(board: Board, color: Color, difficulty: Difficulty): { from: Position; to: Position } | null {
   const config = DIFFICULTY_CONFIG[difficulty];
   const maximizing = color === 'red';
-  const moves = orderMoves(generateMoves(board, color));
+  const moves = orderMoves(generateLegalMoves(board, color));
   if (moves.length === 0) return null;
 
   const scored: { move: SearchMove; score: number }[] = [];
