@@ -12,6 +12,7 @@ const MIME = {
 };
 
 const FILES = [
+  '中国象棋_解压即用.zip',
   'chinese-chess.zip',
   'chinese-chess.tar.gz',
   '本地运行说明.md',
@@ -35,7 +36,7 @@ const server = http.createServer((req, res) => {
   .tip{margin-top:36px;padding:16px 24px;background:#272019;border-radius:8px;display:inline-block;text-align:left;color:#8a7d5e;font-size:14px;line-height:1.8;max-width:520px}
 </style></head><body>
 <h1>中國象棋 · 项目下载</h1>
-<p class="sub">点击下方文件下载到本地</p>
+<p class="sub">推荐下载「解压即用版」，无需安装任何软件</p>
 ${FILES.map((f) => {
   let size = '';
   try { size = (statSync(join(ROOT, f)).size / 1024).toFixed(0) + ' KB'; } catch { size = '-'; }
