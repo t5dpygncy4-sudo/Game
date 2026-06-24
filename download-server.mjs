@@ -5,7 +5,7 @@ import { join, extname } from 'node:path';
 const ROOT = process.cwd();
 const PORT = 3000;
 
-const MIME: Record<string, string> = {
+const MIME = {
   '.zip': 'application/zip',
   '.gz': 'application/gzip',
   '.md': 'text/plain; charset=utf-8',
