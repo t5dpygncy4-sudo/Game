@@ -52,7 +52,7 @@ export default function NotationPanel() {
                 </td>
                 <td className="py-1.5">
                   {r.black ? (
-                    <span className="font-kai text-paper-100">{r.black}</span>
+                    <span className="font-kai text-jade-300">{r.black}</span>
                   ) : (
                     <span className="text-paper-200/30">—</span>
                   )}
