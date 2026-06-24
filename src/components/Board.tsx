@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { findKing } from '@/game/constants';
 import type { Move, Position } from '@/game/types';
@@ -36,11 +36,11 @@ function MoveTrail({ lastMove, flipped }: { lastMove: { from: Position; to: Posi
     <svg
       className="pointer-events-none absolute inset-0 h-full w-full"
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-      preserveAspectRatio="none"
+      style={{ zIndex: 20 }}
     >
       <defs>
-        <filter id="trail-glow">
-          <feGaussianBlur stdDeviation="3" result="blur" />
+        <filter id="trail-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="6" result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
             <feMergeNode in="SourceGraphic" />
@@ -49,7 +49,13 @@ function MoveTrail({ lastMove, flipped }: { lastMove: { from: Position; to: Posi
       </defs>
       <line
         x1={x1} y1={y1} x2={x2} y2={y2}
-        stroke="rgba(255,200,80,0.75)"
+        stroke="rgba(255,180,40,0.35)"
+        strokeWidth={12}
+        strokeLinecap="round"
+      />
+      <line
+        x1={x1} y1={y1} x2={x2} y2={y2}
+        stroke="rgba(255,210,80,0.8)"
         strokeWidth={3.5}
         strokeDasharray="8 5"
         strokeLinecap="round"
@@ -59,7 +65,7 @@ function MoveTrail({ lastMove, flipped }: { lastMove: { from: Position; to: Posi
       </line>
       <polygon
         points={`${x2},${y2} ${ax1},${ay1} ${ax2},${ay2}`}
-        fill="rgba(255,200,80,0.85)"
+        fill="rgba(255,210,80,0.9)"
         filter="url(#trail-glow)"
       />
     </svg>
@@ -86,19 +92,20 @@ export default function Board() {
   const [anim, setAnim] = useState<AnimState | null>(null);
   const prevMoveRef = useRef<Move | null>(null);
   const rafRef = useRef<number>(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lastMove && lastMove !== prevMoveRef.current) {
       prevMoveRef.current = lastMove;
-      setAnim({ move: lastMove, phase: 'slide' });
       cancelAnimationFrame(rafRef.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setAnim({ move: lastMove, phase: 'slide' });
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = requestAnimationFrame(() => {
           setAnim((a) => (a ? { ...a, phase: 'done' } : null));
         });
       });
-      const timer = setTimeout(() => setAnim(null), 400);
-      return () => clearTimeout(timer);
+      timerRef.current = setTimeout(() => setAnim(null), 400);
     }
   }, [lastMove]);
 
@@ -112,7 +119,6 @@ export default function Board() {
   const animFrom = anim ? displayCoord(anim.move.from.col, anim.move.from.row, flipped) : null;
   const animTo = anim ? displayCoord(anim.move.to.col, anim.move.to.row, flipped) : null;
   const animPiece = anim?.move.piece;
-  const isSliding = anim?.phase === 'slide';
 
   return (
     <div
@@ -125,8 +131,6 @@ export default function Board() {
     >
       <BoardGrid />
 
-      {lastMove && <MoveTrail lastMove={lastMove} flipped={flipped} />}
-
       {cells.map(({ col, row }) => {
         const d = displayCoord(col, row, flipped);
         const piece = board[row][col];
@@ -135,7 +139,7 @@ export default function Board() {
         const isLastFrom = samePos(lastMove?.from ?? null, { col, row });
         const isLastTo = samePos(lastMove?.to ?? null, { col, row });
         const isCheckKing = !!checkKing && checkKing.col === col && checkKing.row === row;
-        const hidePiece = anim && isSliding && samePos(anim.move.to, { col, row });
+        const hidePiece = anim !== null && samePos(anim.move.to, { col, row });
 
         return (
           <button
@@ -171,16 +175,18 @@ export default function Board() {
         );
       })}
 
+      {lastMove && <MoveTrail lastMove={lastMove} flipped={flipped} />}
+
       {anim && animPiece && animFrom && animTo && (
         <div
           className="pointer-events-none absolute"
           style={{
-            left: `${isSliding ? px(animFrom.col) : px(animTo.col)}%`,
-            top: `${isSliding ? py(animFrom.row) : py(animTo.row)}%`,
+            left: `${anim.phase === 'slide' ? px(animFrom.col) : px(animTo.col)}%`,
+            top: `${anim.phase === 'slide' ? py(animFrom.row) : py(animTo.row)}%`,
             width: `${CELL_W}%`,
             height: `${CELL_H}%`,
             transform: 'translate(-50%, -50%)',
-            transition: isSliding ? 'none' : 'left 0.28s ease-out, top 0.28s ease-out',
+            transition: anim.phase === 'slide' ? 'none' : 'left 0.28s ease-out, top 0.28s ease-out',
             zIndex: 30,
           }}
         >
