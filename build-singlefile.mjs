@@ -10,22 +10,35 @@ const assetFiles = readdirSync(assetsDir);
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+let jsContent = '';
+let cssContent = '';
+
 for (const file of assetFiles) {
   if (file.endsWith('.js.map')) continue;
   const content = readFileSync(join(assetsDir, file), 'utf-8');
   if (file.endsWith('.js')) {
+    jsContent = content;
     const re = new RegExp(
       `<script[^>]*src=["']/assets/${esc(file)}["'][^>]*></script>`,
       'g'
     );
-    html = html.replace(re, () => `<script defer>\n${content}\n</script>`);
+    html = html.replace(re, '');
   } else if (file.endsWith('.css')) {
+    cssContent = content;
     const re = new RegExp(
       `<link[^>]*href=["']/assets/${esc(file)}["'][^>]*>`,
       'g'
     );
-    html = html.replace(re, () => `<style>\n${content}\n</style>`);
+    html = html.replace(re, '');
   }
+}
+
+if (cssContent) {
+  html = html.replace('</head>', () => `<style>\n${cssContent}\n</style>\n</head>`);
+}
+
+if (jsContent) {
+  html = html.replace('</body>', () => `<script>\n${jsContent}\n</script>\n</body>`);
 }
 
 try {
