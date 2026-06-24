@@ -1,7 +1,7 @@
 import { useGameStore } from '@/store/gameStore';
 import { findKing } from '@/game/constants';
 import type { Position } from '@/game/types';
-import { CELL, displayCoord, px, py, VIEW_H, VIEW_W } from './boardGeometry';
+import { CELL, displayCoord, px, py, vx, vy, VIEW_H, VIEW_W } from './boardGeometry';
 import BoardGrid from './BoardGrid';
 import Piece from './Piece';
 
@@ -10,6 +10,48 @@ const CELL_H = (CELL / VIEW_H) * 100;
 
 function samePos(a: Position | null, b: Position): boolean {
   return !!a && a.col === b.col && a.row === b.row;
+}
+
+function MoveTrail({ lastMove, flipped }: { lastMove: { from: Position; to: Position }; flipped: boolean }) {
+  const from = displayCoord(lastMove.from.col, lastMove.from.row, flipped);
+  const to = displayCoord(lastMove.to.col, lastMove.to.row, flipped);
+  const x1 = vx(from.col);
+  const y1 = vy(from.row);
+  const x2 = vx(to.col);
+  const y2 = vy(to.row);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const arrowLen = 10;
+  const arrowAngle = Math.PI / 7;
+  const ux = dx / len;
+  const uy = dy / len;
+  const ax1 = x2 - arrowLen * (ux * Math.cos(arrowAngle) - uy * Math.sin(arrowAngle));
+  const ay1 = y2 - arrowLen * (uy * Math.cos(arrowAngle) + ux * Math.sin(arrowAngle));
+  const ax2 = x2 - arrowLen * (ux * Math.cos(arrowAngle) + uy * Math.sin(arrowAngle));
+  const ay2 = y2 - arrowLen * (uy * Math.cos(arrowAngle) - ux * Math.sin(arrowAngle));
+
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      preserveAspectRatio="none"
+    >
+      <line
+        x1={x1} y1={y1} x2={x2} y2={y2}
+        stroke="rgba(212,175,82,0.55)"
+        strokeWidth={2.5}
+        strokeDasharray="6 4"
+        strokeLinecap="round"
+      >
+        <animate attributeName="stroke-dashoffset" from="0" to="-20" dur="1s" repeatCount="indefinite" />
+      </line>
+      <polygon
+        points={`${x2},${y2} ${ax1},${ay1} ${ax2},${ay2}`}
+        fill="rgba(212,175,82,0.7)"
+      />
+    </svg>
+  );
 }
 
 export default function Board() {
@@ -42,6 +84,8 @@ export default function Board() {
     >
       <BoardGrid />
 
+      {lastMove && <MoveTrail lastMove={lastMove} flipped={flipped} />}
+
       {cells.map(({ col, row }) => {
         const d = displayCoord(col, row, flipped);
         const piece = board[row][col];
@@ -50,6 +94,7 @@ export default function Board() {
         const isLastFrom = samePos(lastMove?.from ?? null, { col, row });
         const isLastTo = samePos(lastMove?.to ?? null, { col, row });
         const isCheckKing = !!checkKing && checkKing.col === col && checkKing.row === row;
+        const justMoved = isLastTo && !!piece;
 
         return (
           <button
@@ -80,7 +125,10 @@ export default function Board() {
 
             {/* 棋子 */}
             {piece && (
-              <div className="relative h-[88%] w-[88%]">
+              <div
+                className="relative h-[88%] w-[88%]"
+                style={justMoved ? { animation: 'slide-in 0.28s ease-out' } : undefined}
+              >
                 <Piece piece={piece} selected={isSelected} inCheck={isCheckKing} />
               </div>
             )}
