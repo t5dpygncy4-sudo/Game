@@ -4,3 +4,4 @@ export * from './moves';
 export * from './judge';
 export * from './validate';
 export * from './notation';
+export * from './ai';

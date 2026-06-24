@@ -34,7 +34,11 @@ export default function Board() {
   return (
     <div
       className="paper-texture relative shadow-board"
-      style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}`, width: 'min(92vw, 640px)' }}
+      style={{
+        aspectRatio: `${VIEW_W} / ${VIEW_H}`,
+        width: `min(92vw, 640px, calc((100vh - 200px) * ${VIEW_W} / ${VIEW_H}))`,
+        maxWidth: '100%',
+      }}
     >
       <BoardGrid />
 

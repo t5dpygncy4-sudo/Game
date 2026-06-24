@@ -1,10 +1,28 @@
 import { useGameStore } from '@/store/gameStore';
-import { RotateCcw, Undo2, FlipHorizontal2, BookOpen, Trophy } from 'lucide-react';
+import type { Difficulty } from '@/game/ai';
+import {
+  RotateCcw,
+  Undo2,
+  FlipHorizontal2,
+  BookOpen,
+  Trophy,
+  Volume2,
+  VolumeX,
+  Users,
+  Cpu,
+  Loader2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ControlPanelProps {
   onOpenRules: () => void;
 }
+
+const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
+  { value: 'beginner', label: '初级', desc: '浅搜·偶有失误' },
+  { value: 'advanced', label: '高级', desc: '中搜·稳健' },
+  { value: 'master', label: '大师', desc: '深搜·凌厉' },
+];
 
 export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
   const newGame = useGameStore((s) => s.newGame);
@@ -12,42 +30,104 @@ export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
   const flipBoard = useGameStore((s) => s.flipBoard);
   const history = useGameStore((s) => s.history);
   const status = useGameStore((s) => s.status);
+  const mode = useGameStore((s) => s.mode);
+  const difficulty = useGameStore((s) => s.difficulty);
+  const muted = useGameStore((s) => s.muted);
+  const aiThinking = useGameStore((s) => s.aiThinking);
+  const setMode = useGameStore((s) => s.setMode);
+  const setDifficulty = useGameStore((s) => s.setDifficulty);
+  const toggleMute = useGameStore((s) => s.toggleMute);
 
   const finished = status === 'redWin' || status === 'blackWin';
 
-  const buttons = [
-    {
-      label: '新局',
-      icon: RotateCcw,
-      onClick: newGame,
-      primary: true,
-    },
-    {
-      label: '悔棋',
-      icon: Undo2,
-      onClick: undo,
-      disabled: history.length === 0,
-    },
-    {
-      label: '翻转',
-      icon: FlipHorizontal2,
-      onClick: flipBoard,
-    },
-    {
-      label: '规则',
-      icon: BookOpen,
-      onClick: onOpenRules,
-    },
+  const actionButtons = [
+    { label: '新局', icon: RotateCcw, onClick: newGame, primary: true },
+    { label: '悔棋', icon: Undo2, onClick: undo, disabled: history.length === 0 || aiThinking },
+    { label: '翻转', icon: FlipHorizontal2, onClick: flipBoard },
+    { label: '规则', icon: BookOpen, onClick: onOpenRules },
   ];
 
   return (
     <div className="flex w-full flex-col gap-3 rounded-xl border border-ink-600/60 bg-ink-800/70 p-4 backdrop-blur">
-      <div className="flex items-center gap-2 text-gold-500/80">
-        <Trophy className="h-4 w-4" />
-        <span className="font-display text-sm tracking-wider">对局控制</span>
+      <div className="flex items-center justify-between text-gold-500/80">
+        <div className="flex items-center gap-2">
+          <Trophy className="h-4 w-4" />
+          <span className="font-display text-sm tracking-wider">对局控制</span>
+        </div>
+        <button
+          type="button"
+          onClick={toggleMute}
+          className="rounded-md p-1.5 text-paper-200/70 transition-colors hover:bg-ink-600 hover:text-gold-300"
+          title={muted ? '开启声音' : '静音'}
+        >
+          {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+        </button>
       </div>
+
+      {/* 模式切换 */}
+      <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-ink-900/50 p-1">
+        <button
+          type="button"
+          onClick={() => setMode('pvp')}
+          className={cn(
+            'flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-all',
+            mode === 'pvp'
+              ? 'bg-cinnabar-600 text-paper-50 shadow'
+              : 'text-paper-200/60 hover:text-paper-100',
+          )}
+        >
+          <Users className="h-3.5 w-3.5" />
+          双人对弈
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('pve')}
+          className={cn(
+            'flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-all',
+            mode === 'pve'
+              ? 'bg-cinnabar-600 text-paper-50 shadow'
+              : 'text-paper-200/60 hover:text-paper-100',
+          )}
+        >
+          <Cpu className="h-3.5 w-3.5" />
+          人机对战
+        </button>
+      </div>
+
+      {/* 难度选择（仅人机模式） */}
+      {mode === 'pve' && (
+        <div className="flex flex-col gap-1.5 animate-slide-up">
+          <span className="text-[11px] uppercase tracking-widest text-gold-500/60">AI 难度</span>
+          <div className="grid grid-cols-3 gap-1.5">
+            {DIFFICULTIES.map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => setDifficulty(d.value)}
+                title={d.desc}
+                className={cn(
+                  'rounded-md px-1 py-1.5 text-xs font-medium transition-all',
+                  difficulty === d.value
+                    ? 'bg-gold-500 text-ink-900 shadow'
+                    : 'border border-ink-500/60 bg-ink-700/40 text-paper-200/70 hover:border-gold-500/40',
+                )}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+          {aiThinking && (
+            <div className="flex items-center gap-2 rounded-md bg-cinnabar-600/15 px-2 py-1.5 text-xs text-cinnabar-400">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              AI 正在思考…
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 操作按钮 */}
       <div className="grid grid-cols-2 gap-2.5">
-        {buttons.map(({ label, icon: Icon, onClick, primary, disabled }) => (
+        {actionButtons.map(({ label, icon: Icon, onClick, primary, disabled }) => (
           <button
             key={label}
             type="button"
@@ -66,6 +146,7 @@ export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
           </button>
         ))}
       </div>
+
       {finished && (
         <button
           type="button"
