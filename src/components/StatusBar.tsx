@@ -20,7 +20,7 @@ export default function StatusBar() {
   if (status === 'redWin') resultText = '红方胜';
   if (status === 'blackWin') resultText = '黑方胜';
 
-  const aiTurn = mode === 'pve' && turn !== playerColor;
+  const aiTurn = (mode === 'pve' && turn !== playerColor) || mode === 'aiva';
 
   return (
     <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-ink-600/60 bg-ink-800/70 px-4 py-3 backdrop-blur">

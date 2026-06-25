@@ -11,8 +11,14 @@ export function useGameEngine() {
   const requestAIMove = useGameStore((s) => s.requestAIMove);
 
   useEffect(() => {
-    if (mode === 'pve' && turn !== playerColor && !aiThinking && status !== 'redWin' && status !== 'blackWin') {
-      const timer = setTimeout(() => requestAIMove(), 120);
+    // pve：AI 颜色轮到时触发；aiva：任何一方轮到都触发
+    const shouldTrigger =
+      !aiThinking &&
+      status !== 'redWin' &&
+      status !== 'blackWin' &&
+      ((mode === 'pve' && turn !== playerColor) || mode === 'aiva');
+    if (shouldTrigger) {
+      const timer = setTimeout(() => requestAIMove(), mode === 'aiva' ? 400 : 120);
       return () => clearTimeout(timer);
     }
     return undefined;

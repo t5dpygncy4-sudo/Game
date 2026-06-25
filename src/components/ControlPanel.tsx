@@ -14,8 +14,10 @@ import {
   Loader2,
   Swords,
   Shield,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import AIBattlePanel from './AIBattlePanel';
 
 interface ControlPanelProps {
   onOpenRules: () => void;
@@ -30,6 +32,12 @@ const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
 const SIDES: { value: Color; label: string; icon: typeof Swords }[] = [
   { value: 'red', label: '执红', icon: Swords },
   { value: 'black', label: '执黑', icon: Shield },
+];
+
+const MODES: { value: 'pvp' | 'pve' | 'aiva'; label: string; icon: typeof Users }[] = [
+  { value: 'pvp', label: '双人', icon: Users },
+  { value: 'pve', label: '人机', icon: Cpu },
+  { value: 'aiva', label: 'AI对战', icon: Bot },
 ];
 
 export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
@@ -52,7 +60,7 @@ export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
 
   const actionButtons = [
     { label: '新局', icon: RotateCcw, onClick: newGame, primary: true },
-    { label: '悔棋', icon: Undo2, onClick: undo, disabled: history.length === 0 || aiThinking },
+    { label: '悔棋', icon: Undo2, onClick: undo, disabled: history.length === 0 || aiThinking || mode === 'aiva' },
     { label: '翻转', icon: FlipHorizontal2, onClick: flipBoard },
     { label: '规则', icon: BookOpen, onClick: onOpenRules },
   ];
@@ -74,37 +82,27 @@ export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
         </button>
       </div>
 
-      {/* 模式切换 */}
-      <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-ink-900/50 p-1">
-        <button
-          type="button"
-          onClick={() => setMode('pvp')}
-          className={cn(
-            'flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-all',
-            mode === 'pvp'
-              ? 'bg-cinnabar-600 text-paper-50 shadow'
-              : 'text-paper-200/60 hover:text-paper-100',
-          )}
-        >
-          <Users className="h-3.5 w-3.5" />
-          双人对弈
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('pve')}
-          className={cn(
-            'flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-all',
-            mode === 'pve'
-              ? 'bg-cinnabar-600 text-paper-50 shadow'
-              : 'text-paper-200/60 hover:text-paper-100',
-          )}
-        >
-          <Cpu className="h-3.5 w-3.5" />
-          人机对战
-        </button>
+      {/* 模式切换（三模式） */}
+      <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-ink-900/50 p-1">
+        {MODES.map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setMode(value)}
+            className={cn(
+              'flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-all',
+              mode === value
+                ? 'bg-cinnabar-600 text-paper-50 shadow'
+                : 'text-paper-200/60 hover:text-paper-100',
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* 难度选择（仅人机模式） */}
+      {/* 人机模式：选边 + 难度 */}
       {mode === 'pve' && (
         <div className="flex flex-col gap-1.5 animate-slide-up">
           <span className="text-[11px] uppercase tracking-widest text-gold-500/60">执子选择</span>
@@ -153,6 +151,38 @@ export default function ControlPanel({ onOpenRules }: ControlPanelProps) {
               AI 正在思考…
             </div>
           )}
+        </div>
+      )}
+
+      {/* AI 对战模式：难度 + 学习面板 */}
+      {mode === 'aiva' && (
+        <div className="flex flex-col gap-2 animate-slide-up">
+          <span className="text-[11px] uppercase tracking-widest text-gold-500/60">AI 难度</span>
+          <div className="grid grid-cols-3 gap-1.5">
+            {DIFFICULTIES.map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => setDifficulty(d.value)}
+                title={d.desc}
+                className={cn(
+                  'rounded-md px-1 py-1.5 text-xs font-medium transition-all',
+                  difficulty === d.value
+                    ? 'bg-gold-500 text-ink-900 shadow'
+                    : 'border border-ink-500/60 bg-ink-700/40 text-paper-200/70 hover:border-gold-500/40',
+                )}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+          {aiThinking && (
+            <div className="flex items-center gap-2 rounded-md bg-cinnabar-600/15 px-2 py-1.5 text-xs text-cinnabar-400">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              AI 对弈中…
+            </div>
+          )}
+          <AIBattlePanel />
         </div>
       )}
 
