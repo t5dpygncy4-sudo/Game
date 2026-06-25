@@ -1,5 +1,5 @@
 import type { Board, Color, PieceType, Position } from './types';
-import { COLS, ROWS, crossedRiver, createInitialBoard, cloneBoard } from './constants';
+import { COLS, ROWS, crossedRiver, createInitialBoard, cloneBoard, findKing } from './constants';
 import { getPseudoMoves } from './moves';
 import { isInCheck } from './judge';
 import { getGameStatus, getLegalMoves } from './validate';
@@ -14,9 +14,9 @@ export interface AIConfig {
 }
 
 export const DIFFICULTY_CONFIG: Record<Difficulty, AIConfig> = {
-  beginner: { depth: 3, randomness: 60, timeLimit: 300 },
-  advanced: { depth: 5, randomness: 20, timeLimit: 800 },
-  master: { depth: 7, randomness: 0, timeLimit: 2000 },
+  beginner: { depth: 4, randomness: 60, timeLimit: 400 },
+  advanced: { depth: 6, randomness: 20, timeLimit: 1200 },
+  master: { depth: 8, randomness: 0, timeLimit: 3000 },
 };
 
 // ============ 可调权重（学习系统可修改） ============
