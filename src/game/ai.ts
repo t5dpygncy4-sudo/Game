@@ -675,6 +675,7 @@ function negamax(
 /**
  * 历史走法记录（用于检测连续将军与局面重复）。
  * recentChecks: 最近若干步中，每步是否为将军、以及由哪个棋子（from 位置）发出。
+ * boardHashAfter: 走完该步后局面的哈希（含轮走方），用于检测局面重复 / 避免循环棋。
  */
 export interface MoveHistoryEntry {
   from: Position;
@@ -682,6 +683,7 @@ export interface MoveHistoryEntry {
   color: Color;
   isCheck: boolean; // 该步是否将军对方
   pieceType: PieceType;
+  boardHashAfter: string;
 }
 
 const MAX_CHECK_REPETITION = 3; // 同一棋子连续将军最多 3 次
@@ -715,24 +717,36 @@ function wouldViolateCheckRepetition(
 /**
  * 检测局面重复：返回该局面在历史中出现的次数。
  * 用于判断和棋（三次重复）。
+ * 使用 MoveHistoryEntry.boardHashAfter 直接比对，无需重新模拟棋盘。
  */
 export function countRepetition(history: MoveHistoryEntry[], board: Board, turn: Color): number {
-  // 重建每步走完后的局面哈希，统计与当前局面相同的次数
-  const b: Board = createInitialBoard();
-  let t: Color = 'red';
+  const currentHash = boardHashWithTurn(board, turn);
   let count = 0;
-  const currentHash = boardHashSimple(board);
-  // 初始局面
-  if (boardHashSimple(b) === currentHash && t === turn) count++;
+  // 初始局面（红方轮走）也算一次出现
+  const initialHash = boardHashWithTurn(createInitialBoard(), 'red');
+  if (initialHash === currentHash) count++;
   for (const e of history) {
-    const piece = b[e.from.row][e.from.col];
-    if (!piece) break;
-    b[e.to.row][e.to.col] = piece;
-    b[e.from.row][e.from.col] = null;
-    t = t === 'red' ? 'black' : 'red';
-    if (boardHashSimple(b) === currentHash && t === turn) count++;
+    if (e.boardHashAfter === currentHash) count++;
   }
   return count;
+}
+
+/**
+ * 快速检测：当前局面是否已达到 N 次重复（用于和棋判定）。
+ * 用 Map 索引避免重复遍历。
+ */
+export function isRepetitionDraw(history: MoveHistoryEntry[], board: Board, turn: Color, threshold = 3): boolean {
+  const currentHash = boardHashWithTurn(board, turn);
+  let count = 0;
+  const initialHash = boardHashWithTurn(createInitialBoard(), 'red');
+  if (initialHash === currentHash) count++;
+  for (const e of history) {
+    if (e.boardHashAfter === currentHash) {
+      count++;
+      if (count >= threshold) return true;
+    }
+  }
+  return count >= threshold;
 }
 
 function boardHashSimple(board: Board): string {
@@ -745,6 +759,11 @@ function boardHashSimple(board: Board): string {
     }
   }
   return s;
+}
+
+/** 含轮走方的局面哈希：相同棋盘不同方走视为不同局面 */
+export function boardHashWithTurn(board: Board, turn: Color): string {
+  return boardHashSimple(board) + (turn === 'red' ? '|R' : '|B');
 }
 
 // ============ 静止搜索（Quiescence） ============
@@ -811,6 +830,25 @@ export function findBestMove(
 
   const workBoard = board.map((r) => r.map((c) => (c ? { ...c } : null)));
 
+  // 预计算每个走法走完后形成的局面哈希及其在历史中的重复次数
+  // 用于在选走法时避开循环棋（双方反复走同样局面）
+  const REPETITION_PENALTY = 2000; // 远大于 tolerance，确保重复走法跌出 top-N
+  const initialHash = boardHashWithTurn(createInitialBoard(), 'red');
+  // 用 Map 索引历史中每个局面哈希的出现次数，避免 O(moves × history) 双重遍历
+  const historyHashCount = new Map<string, number>();
+  for (const e of recentChecks) {
+    historyHashCount.set(e.boardHashAfter, (historyHashCount.get(e.boardHashAfter) ?? 0) + 1);
+  }
+  const moveRepCount = new Map<SearchMove, number>();
+  for (const move of movesToSearch) {
+    makeMove(workBoard, move);
+    const hashAfter = boardHashWithTurn(workBoard, oppColor);
+    unmakeMove(workBoard, move);
+    let repCount = historyHashCount.get(hashAfter) ?? 0;
+    if (hashAfter === initialHash) repCount++; // 回到初始局面
+    moveRepCount.set(move, repCount);
+  }
+
   // 初始化搜索状态
   searchStartTime = Date.now();
   searchTimeLimit = config.timeLimit;
@@ -848,7 +886,9 @@ export function findBestMove(
 
       if (searchCancelled && depth > 1) break;
 
-      scored.push({ move, score });
+      // 应用重复局面惩罚：避免循环棋
+      const rep = moveRepCount.get(move) ?? 0;
+      scored.push({ move, score: score - rep * REPETITION_PENALTY });
     }
 
     if (!searchCancelled || depth === 1) {
@@ -872,7 +912,8 @@ export function findBestMove(
       makeMove(workBoard, move);
       const score = -negamax(workBoard, 1, -Infinity, Infinity, oppColor, 1, true);
       unmakeMove(workBoard, move);
-      allScored.push({ move, score });
+      const rep = moveRepCount.get(move) ?? 0;
+      allScored.push({ move, score: score - rep * REPETITION_PENALTY });
     }
     allScored.sort((a, b) => b.score - a.score);
     const bestScoreVal = allScored[0].score;
@@ -893,17 +934,18 @@ export function findBestMove(
   const tolerance = isOpening ? 80 : profile.midgameTolerance;
   const varietyN = isOpening ? profile.openingVariety : Math.min(3, profile.openingVariety);
 
-  // 重新评估 top 走法（最后一轮迭代的结果）
+  // 重新评估 top 走法（最后一轮迭代的结果），并应用重复惩罚
   if (!searchCancelled) {
-    // 用最后一次迭代的得分排序
     const finalScored: { move: SearchMove; score: number }[] = [];
     for (const move of movesToSearch) {
       makeMove(workBoard, move);
       const score = -negamax(workBoard, Math.min(config.depth, 4), -Infinity, Infinity, oppColor, 1, true);
       unmakeMove(workBoard, move);
-      finalScored.push({ move, score });
+      const rep = moveRepCount.get(move) ?? 0;
+      finalScored.push({ move, score: score - rep * REPETITION_PENALTY });
       if (searchCancelled) break;
     }
+
     if (finalScored.length > 0) {
       finalScored.sort((a, b) => b.score - a.score);
       const topScore = finalScored[0].score;
@@ -968,7 +1010,7 @@ export function aiSelfPlay(
     }
 
     // 三次重复局面判和
-    if (countRepetition(checkHistory, board, turn) >= 3) {
+    if (isRepetitionDraw(checkHistory, board, turn, 3)) {
       return { winner: 'draw', moves, reason: '三次重复局面', finalBoard: board };
     }
 
@@ -1019,6 +1061,7 @@ export function aiSelfPlay(
       color: turn,
       isCheck,
       pieceType: movingPiece.type,
+      boardHashAfter: boardHashWithTurn(board, oppColor),
     });
 
     const move: AIBattleMove = {

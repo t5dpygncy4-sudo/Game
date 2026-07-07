@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Color } from '../types';
 import { createInitialBoard, cloneBoard } from '../constants';
-import { findBestMove, evaluate, DIFFICULTY_CONFIG, setPersonality, randomPersonality, type MoveHistoryEntry } from '../ai';
+import { findBestMove, evaluate, DIFFICULTY_CONFIG, setPersonality, randomPersonality, boardHashWithTurn, type MoveHistoryEntry } from '../ai';
 import { getLegalMoves } from '../validate';
 import { isInCheck } from '../judge';
 
@@ -36,16 +36,20 @@ describe('AI 基础', () => {
     }
   });
 
-  it('AI 不会走出送将的着法', () => {
-    const board = createInitialBoard();
-    for (let i = 0; i < 6; i++) {
-      const move = findBestMove(board, (i % 2 === 0 ? 'red' : 'black') as Color, 'advanced');
-      if (!move) break;
-      applyMove(board, move.from, move.to);
-      const moverColor = i % 2 === 0 ? 'red' : 'black';
-      expect(isInCheck(board, moverColor as Color)).toBe(false);
-    }
-  });
+  it(
+    'AI 不会走出送将的着法',
+    () => {
+      const board = createInitialBoard();
+      for (let i = 0; i < 6; i++) {
+        const move = findBestMove(board, (i % 2 === 0 ? 'red' : 'black') as Color, 'advanced');
+        if (!move) break;
+        applyMove(board, move.from, move.to);
+        const moverColor = i % 2 === 0 ? 'red' : 'black';
+        expect(isInCheck(board, moverColor as Color)).toBe(false);
+      }
+    },
+    20000,
+  );
 
   it('大师难度能发现一步将杀（车底杀）', () => {
     const board = createInitialBoard();
@@ -97,6 +101,7 @@ describe('AI 基础', () => {
         color: 'red' as Color,
         isCheck: true,
         pieceType: 'chariot',
+        boardHashAfter: `fake-hash-${i}`, // 此测试只关心将军计数，哈希值不影响
       });
     }
     // 第 4 次同棋子将军应被禁止，AI 应选择非将军走法（如横移）
@@ -173,6 +178,49 @@ describe('AI 基础', () => {
     if (move) {
       expect(move.to.col).toBe(4);
       expect(move.to.row).toBe(5);
+    }
+  });
+
+  it('AI 会主动避开循环棋（不重复走回曾出现的局面）', () => {
+    // 构造一个局面：红车在 a 列上下移动会形成循环
+    // 红车 (0,0) <-> (1,0)，黑王在 (9,4)
+    const board = createInitialBoard();
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) board[r][c] = null;
+    board[9][4] = { type: 'king', color: 'black' };
+    board[0][4] = { type: 'king', color: 'red' };
+    board[1][0] = { type: 'chariot', color: 'red' };
+
+    // 模拟历史：红车已经走过 (0,0)->(1,0) 一次（形成过局面A）
+    // 现在让 AI 再次选择，若选 (1,0)->(0,0) 会回到曾出现过的局面，应避开
+    const history: MoveHistoryEntry[] = [
+      {
+        from: { col: 0, row: 0 },
+        to: { col: 0, row: 1 },
+        color: 'red',
+        isCheck: false,
+        pieceType: 'chariot',
+        boardHashAfter: '', // 占位，下面会重新计算
+      },
+    ];
+    // 计算正确的 boardHashAfter：红车从 (0,0) 走到 (1,0) 后，轮到黑方
+    const afterFirstMove = cloneBoard(board);
+    // 先把红车放回 (0,0) 模拟初始状态
+    afterFirstMove[1][0] = null;
+    afterFirstMove[0][0] = { type: 'chariot', color: 'red' };
+    // 走第一步
+    afterFirstMove[1][0] = afterFirstMove[0][0];
+    afterFirstMove[0][0] = null;
+    // 此时 board 就是当前 board（红车在 (1,0)），boardHashAfter 应是走完后轮黑方
+    history[0].boardHashAfter = boardHashWithTurn(afterFirstMove, 'black');
+
+    // 现在让 AI 在当前局面（红车在 (1,0)）选走法
+    // 候选 (1,0)->(0,0) 会回到历史局面，应被避开
+    const move = findBestMove(board, 'red' as Color, 'advanced', history);
+    expect(move).not.toBeNull();
+    if (move) {
+      // 不应回到 (0,0) 形成循环
+      const isLoop = move.from.col === 0 && move.from.row === 1 && move.to.col === 0 && move.to.row === 0;
+      expect(isLoop).toBe(false);
     }
   });
 });

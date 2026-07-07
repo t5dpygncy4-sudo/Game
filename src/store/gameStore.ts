@@ -9,6 +9,7 @@ import {
   setPieceWeights,
   setPersonality,
   randomPersonality,
+  boardHashWithTurn,
   type Difficulty,
   type AIBattleMove,
   type MoveHistoryEntry,
@@ -175,6 +176,7 @@ function buildCheckHistory(history: Move[]): MoveHistoryEntry[] {
       color: piece.color,
       isCheck,
       pieceType: piece.type,
+      boardHashAfter: boardHashWithTurn(next, oppColor),
     });
     board = next;
   }
