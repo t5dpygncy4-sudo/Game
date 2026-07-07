@@ -143,4 +143,36 @@ describe('AI 基础', () => {
     const scores = new Set([aggScore, defScore, posScore]);
     expect(scores.size).toBeGreaterThanOrEqual(2);
   });
+
+  it('黑方也能发现一步将杀（修复黑方选最差走法的 bug）', () => {
+    // 构造黑车可一步将杀红帅的局面
+    const board = createInitialBoard();
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) board[r][c] = null;
+    board[5][0] = { type: 'king', color: 'red' };
+    board[6][0] = { type: 'chariot', color: 'black' };
+    board[5][8] = { type: 'king', color: 'black' };
+    const move = findBestMove(board, 'black' as Color, 'master');
+    expect(move).not.toBeNull();
+    if (move) {
+      // 黑车走到红帅位置吃帅
+      expect(move.to.col).toBe(0);
+      expect(move.to.row).toBe(5);
+    }
+  });
+
+  it('黑方会吃掉无防护的高价值棋子（不再当傻子）', () => {
+    // 红马无防护落在黑车攻击范围内，黑应主动吃马
+    const board = createInitialBoard();
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) board[r][c] = null;
+    board[9][4] = { type: 'king', color: 'black' };
+    board[0][4] = { type: 'king', color: 'red' };
+    board[5][4] = { type: 'horse', color: 'red' }; // 红马无防护
+    board[6][4] = { type: 'chariot', color: 'black' }; // 黑车可吃马
+    const move = findBestMove(board, 'black' as Color, 'advanced');
+    expect(move).not.toBeNull();
+    if (move) {
+      expect(move.to.col).toBe(4);
+      expect(move.to.row).toBe(5);
+    }
+  });
 });

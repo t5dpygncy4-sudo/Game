@@ -794,7 +794,6 @@ export function findBestMove(
   recentChecks: MoveHistoryEntry[] = [],
 ): { from: Position; to: Position } | null {
   const config = DIFFICULTY_CONFIG[difficulty];
-  const maximizing = color === 'red';
 
   const moves = generateLegalMoves(board, color);
   if (moves.length === 0) return null;
@@ -822,7 +821,7 @@ export function findBestMove(
   mobilityEnabled = difficulty !== 'beginner';
 
   let bestMove: SearchMove | null = null;
-  let bestScore = maximizing ? -Infinity : Infinity;
+  let bestScore = -Infinity;
 
   // 迭代深化：从 1 层到 config.depth
   for (let depth = 1; depth <= config.depth; depth++) {
@@ -853,7 +852,9 @@ export function findBestMove(
     }
 
     if (!searchCancelled || depth === 1) {
-      scored.sort((a, b) => (maximizing ? b.score - a.score : a.score - b.score));
+      // negamax 返回的是当前走子方视角的分数（正=对当前方有利），
+      // 无论红黑都应取最高分
+      scored.sort((a, b) => b.score - a.score);
       if (scored.length > 0) {
         bestMove = scored[0].move;
         bestScore = scored[0].score;
@@ -873,7 +874,7 @@ export function findBestMove(
       unmakeMove(workBoard, move);
       allScored.push({ move, score });
     }
-    allScored.sort((a, b) => (maximizing ? b.score - a.score : a.score - b.score));
+    allScored.sort((a, b) => b.score - a.score);
     const bestScoreVal = allScored[0].score;
     const candidates = allScored.filter((s) => Math.abs(s.score - bestScoreVal) <= config.randomness);
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -904,16 +905,14 @@ export function findBestMove(
       if (searchCancelled) break;
     }
     if (finalScored.length > 0) {
-      finalScored.sort((a, b) => (maximizing ? b.score - a.score : a.score - b.score));
+      finalScored.sort((a, b) => b.score - a.score);
       const topScore = finalScored[0].score;
       // 若找到将死，直接返回（不容随机）
       if (Math.abs(topScore) >= MATE_SCORE - 100) {
         return { from: finalScored[0].move.from, to: finalScored[0].move.to };
       }
-      // 取分数差 < tolerance 的候选
-      const candidates = finalScored.filter((s) =>
-        maximizing ? topScore - s.score <= tolerance : s.score - topScore <= tolerance,
-      );
+      // 取分数差 < tolerance 的候选（topScore - s.score >= 0）
+      const candidates = finalScored.filter((s) => topScore - s.score <= tolerance);
       const n = Math.min(varietyN, candidates.length);
       const pick = candidates[Math.floor(Math.random() * n)];
       return { from: pick.move.from, to: pick.move.to };
