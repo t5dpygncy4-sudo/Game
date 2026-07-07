@@ -9,6 +9,7 @@ import {
   setPieceWeights,
   type Difficulty,
   type AIBattleMove,
+  type MoveHistoryEntry,
 } from '@/game/ai';
 import {
   applyLearnedWeights,
@@ -19,6 +20,7 @@ import {
   type LearningState,
 } from '@/game/learning';
 import { playSound, setMuted as setSoundMuted, type SoundType } from '@/lib/sound';
+import { isInCheck } from '@/game/judge';
 
 export type GameMode = 'pvp' | 'pve' | 'aiva';
 
@@ -145,6 +147,32 @@ function buildBattleResultFromHistory(
     reason = '红方被将死';
   }
   return { winner, moves, reason, finalBoard: board };
+}
+
+// 从历史记录构建将军历史，用于 AI 检测连续将军
+function buildCheckHistory(history: Move[]): MoveHistoryEntry[] {
+  const entries: MoveHistoryEntry[] = [];
+  let board: Board = createInitialBoard();
+  for (const m of history) {
+    const piece = board[m.from.row][m.from.col];
+    if (!piece) break;
+    // 模拟走子
+    const next = cloneBoard(board);
+    next[m.to.row][m.to.col] = piece;
+    next[m.from.row][m.from.col] = null;
+    // 走完后检测对方是否被将军
+    const oppColor: Color = piece.color === 'red' ? 'black' : 'red';
+    const isCheck = isInCheck(next, oppColor);
+    entries.push({
+      from: m.from,
+      to: m.to,
+      color: piece.color,
+      isCheck,
+      pieceType: piece.type,
+    });
+    board = next;
+  }
+  return entries;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -349,7 +377,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         best = provider(current.board, current.turn, current.history.length);
       }
       if (!best) {
-        best = findBestMove(current.board, aiColor, current.difficulty);
+        // 构建将军历史，防止 AI 连续将军超 3 次
+        const checkHistory = buildCheckHistory(current.history);
+        best = findBestMove(current.board, aiColor, current.difficulty, checkHistory);
       }
 
       if (!best) {

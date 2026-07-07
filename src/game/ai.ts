@@ -1,5 +1,5 @@
 import type { Board, Color, PieceType, Position } from './types';
-import { COLS, ROWS, crossedRiver, createInitialBoard, cloneBoard, findKing } from './constants';
+import { COLS, ROWS, crossedRiver, createInitialBoard, cloneBoard } from './constants';
 import { getPseudoMoves } from './moves';
 import { isInCheck } from './judge';
 import { getGameStatus, getLegalMoves } from './validate';
@@ -267,8 +267,8 @@ export function evaluate(board: Board): number {
   let score = 0;
   let redKing = false;
   let blackKing = false;
-  let redMobility = 0;
-  let blackMobility = 0;
+  let redKingPos: Position | null = null;
+  let blackKingPos: Position | null = null;
 
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
@@ -281,10 +281,16 @@ export function evaluate(board: Board): number {
       val += pstValue(piece.type, col, row, piece.color);
       if (piece.color === 'red') {
         score += val;
-        if (piece.type === 'king') redKing = true;
+        if (piece.type === 'king') {
+          redKing = true;
+          redKingPos = { col, row };
+        }
       } else {
         score -= val;
-        if (piece.type === 'king') blackKing = true;
+        if (piece.type === 'king') {
+          blackKing = true;
+          blackKingPos = { col, row };
+        }
       }
     }
   }
@@ -292,14 +298,39 @@ export function evaluate(board: Board): number {
   if (!redKing) return -MATE_SCORE;
   if (!blackKing) return MATE_SCORE;
 
+  // 王安全评估：王周围有己方棋子保护则加分
+  if (redKingPos) score += kingSafety(board, redKingPos, 'red');
+  if (blackKingPos) score -= kingSafety(board, blackKingPos, 'black');
+
   // 机动性评估（只在中浅层计算，避免过慢）
   if (mobilityEnabled) {
-    redMobility = countMobility(board, 'red');
-    blackMobility = countMobility(board, 'black');
+    const redMobility = countMobility(board, 'red');
+    const blackMobility = countMobility(board, 'black');
     score += (redMobility - blackMobility) * 2;
   }
 
   return score;
+}
+
+// 王安全：王周围 8 格己方棋子数量 × 系数
+function kingSafety(board: Board, kingPos: Position, color: Color): number {
+  let safety = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const r = kingPos.row + dr;
+      const c = kingPos.col + dc;
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+      const p = board[r][c];
+      if (p && p.color === color) {
+        // 士相守王最有价值，其他棋子次之
+        if (p.type === 'advisor' || p.type === 'elephant') safety += 8;
+        else if (p.type === 'chariot' || p.type === 'cannon') safety += 3;
+        else safety += 1;
+      }
+    }
+  }
+  return safety;
 }
 
 let mobilityEnabled = true;
@@ -488,7 +519,10 @@ function negamax(
   // 终止条件
   const standPat = evaluate(board) * (color === 'red' ? 1 : -1);
   if (Math.abs(standPat) >= MATE_SCORE) return standPat;
-  if (depth <= 0) return standPat;
+  if (depth <= 0) {
+    // 叶节点使用静止搜索，避免战术盲点（如被吃大子）
+    return quiescence(board, alpha, beta, color, ply);
+  }
 
   // 空步裁剪
   if (allowNull && depth >= 3 && !isInCheck(board, color) && Math.abs(standPat) < MATE_SCORE - 100) {
@@ -553,18 +587,145 @@ function negamax(
   return bestScore;
 }
 
+// ============ 重复将军 / 局面重复检测 ============
+
+/**
+ * 历史走法记录（用于检测连续将军与局面重复）。
+ * recentChecks: 最近若干步中，每步是否为将军、以及由哪个棋子（from 位置）发出。
+ */
+export interface MoveHistoryEntry {
+  from: Position;
+  to: Position;
+  color: Color;
+  isCheck: boolean; // 该步是否将军对方
+  pieceType: PieceType;
+}
+
+const MAX_CHECK_REPETITION = 3; // 同一棋子连续将军最多 3 次
+
+/**
+ * 判断给定的「候选走法」是否构成违规连续将军。
+ * 规则：同一棋子（同 from 位置、同类型）连续将军次数已达上限则禁止继续将军。
+ */
+function wouldViolateCheckRepetition(
+  recentChecks: MoveHistoryEntry[],
+  candidateFrom: Position,
+  candidateIsCheck: boolean,
+): boolean {
+  if (!candidateIsCheck) return false;
+  // 从末尾向前统计同一 from 位置的连续将军步数
+  let count = 0;
+  for (let i = recentChecks.length - 1; i >= 0; i--) {
+    const e = recentChecks[i];
+    if (!e.isCheck) break;
+    if (e.from.col === candidateFrom.col && e.from.row === candidateFrom.row) {
+      count++;
+    } else {
+      // 中间夹了其他棋子的将军也算连续将军序列的一部分（长将）
+      // 但我们只限制同一棋子连续将军，所以遇到不同棋子的将军就停止
+      break;
+    }
+  }
+  return count >= MAX_CHECK_REPETITION;
+}
+
+/**
+ * 检测局面重复：返回该局面在历史中出现的次数。
+ * 用于判断和棋（三次重复）。
+ */
+export function countRepetition(history: MoveHistoryEntry[], board: Board, turn: Color): number {
+  // 重建每步走完后的局面哈希，统计与当前局面相同的次数
+  const b: Board = createInitialBoard();
+  let t: Color = 'red';
+  let count = 0;
+  const currentHash = boardHashSimple(board);
+  // 初始局面
+  if (boardHashSimple(b) === currentHash && t === turn) count++;
+  for (const e of history) {
+    const piece = b[e.from.row][e.from.col];
+    if (!piece) break;
+    b[e.to.row][e.to.col] = piece;
+    b[e.from.row][e.from.col] = null;
+    t = t === 'red' ? 'black' : 'red';
+    if (boardHashSimple(b) === currentHash && t === turn) count++;
+  }
+  return count;
+}
+
+function boardHashSimple(board: Board): string {
+  let s = '';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const p = board[r][c];
+      if (!p) s += '.';
+      else s += p.color === 'red' ? p.type[0].toUpperCase() : p.type[0];
+    }
+  }
+  return s;
+}
+
+// ============ 静止搜索（Quiescence） ============
+
+function quiescence(board: Board, alpha: number, beta: number, color: Color, ply: number): number {
+  if ((ply & 7) === 0 && timeUp()) {
+    searchCancelled = true;
+    return evaluate(board) * (color === 'red' ? 1 : -1);
+  }
+  const standPat = evaluate(board) * (color === 'red' ? 1 : -1);
+  if (standPat >= beta) return beta;
+  if (standPat > alpha) alpha = standPat;
+  if (Math.abs(standPat) >= MATE_SCORE) return standPat;
+
+  // 只生成吃子走法
+  const moves = generateMoves(board, color);
+  const captureMoves = moves.filter((m) => m.captured !== null);
+  // MVV-LVA 排序
+  for (const m of captureMoves) {
+    const attacker = board[m.from.row][m.from.col];
+    m.score = 10000 + currentPieceValue[m.captured!.type] * 10 - currentPieceValue[attacker!.type];
+  }
+  captureMoves.sort((a, b) => b.score - a.score);
+
+  for (const move of captureMoves) {
+    makeMove(board, move);
+    if (isInCheck(board, color)) {
+      unmakeMove(board, move);
+      continue;
+    }
+    const oppColor: Color = color === 'red' ? 'black' : 'red';
+    const score = -quiescence(board, -beta, -alpha, oppColor, ply + 1);
+    unmakeMove(board, move);
+    if (searchCancelled) return alpha;
+    if (score >= beta) return beta;
+    if (score > alpha) alpha = score;
+  }
+  return alpha;
+}
+
 // ============ 迭代深化搜索 ============
 
 export function findBestMove(
   board: Board,
   color: Color,
   difficulty: Difficulty,
+  recentChecks: MoveHistoryEntry[] = [],
 ): { from: Position; to: Position } | null {
   const config = DIFFICULTY_CONFIG[difficulty];
   const maximizing = color === 'red';
 
   const moves = generateLegalMoves(board, color);
   if (moves.length === 0) return null;
+
+  // 预先过滤违规连续将军走法
+  const oppColor: Color = color === 'red' ? 'black' : 'red';
+  const filteredMoves = moves.filter((m) => {
+    makeMove(board, m);
+    const isCheck = isInCheck(board, oppColor);
+    unmakeMove(board, m);
+    return !wouldViolateCheckRepetition(recentChecks, m.from, isCheck);
+  });
+  // 若过滤后无走法（罕见，说明所有走法都是违规长将），则退回原走法
+  const movesToSearch = filteredMoves.length > 0 ? filteredMoves : moves;
 
   const workBoard = board.map((r) => r.map((c) => (c ? { ...c } : null)));
 
@@ -588,19 +749,18 @@ export function findBestMove(
 
     // 上一轮的最佳走法排在最前
     if (bestMove) {
-      for (const m of moves) {
+      for (const m of movesToSearch) {
         if (sameMove(m, bestMove!)) {
           m.score = 1000000;
         } else {
           m.score = 0;
         }
       }
-      moves.sort((a, b) => b.score - a.score);
+      movesToSearch.sort((a, b) => b.score - a.score);
     }
 
-    for (const move of moves) {
+    for (const move of movesToSearch) {
       makeMove(workBoard, move);
-      const oppColor: Color = color === 'red' ? 'black' : 'red';
       const score = -negamax(workBoard, depth - 1, -Infinity, Infinity, oppColor, 1, true);
       unmakeMove(workBoard, move);
 
@@ -624,9 +784,8 @@ export function findBestMove(
   // 随机性（低难度）
   if (config.randomness > 0 && bestMove) {
     const allScored: { move: SearchMove; score: number }[] = [];
-    for (const move of moves) {
+    for (const move of movesToSearch) {
       makeMove(workBoard, move);
-      const oppColor: Color = color === 'red' ? 'black' : 'red';
       const score = -negamax(workBoard, 1, -Infinity, Infinity, oppColor, 1, true);
       unmakeMove(workBoard, move);
       allScored.push({ move, score });
@@ -640,7 +799,7 @@ export function findBestMove(
 
   if (!bestMove) {
     // 兜底：返回第一个合法走法
-    return { from: moves[0].from, to: moves[0].to };
+    return { from: movesToSearch[0].from, to: movesToSearch[0].to };
   }
 
   return { from: bestMove.from, to: bestMove.to };
@@ -679,6 +838,7 @@ export function aiSelfPlay(
   let board: Board = createInitialBoard();
   let turn: Color = 'red';
   const moves: AIBattleMove[] = [];
+  const checkHistory: MoveHistoryEntry[] = [];
   let moveCount = 0;
 
   while (moveCount < maxMoves) {
@@ -688,6 +848,11 @@ export function aiSelfPlay(
     }
     if (status === 'blackWin') {
       return { winner: 'black', moves, reason: '红方被将死', finalBoard: board };
+    }
+
+    // 三次重复局面判和
+    if (countRepetition(checkHistory, board, turn) >= 3) {
+      return { winner: 'draw', moves, reason: '三次重复局面', finalBoard: board };
     }
 
     // 优先使用外部走法提供者（开局库等），失败则回退到搜索
@@ -706,7 +871,8 @@ export function aiSelfPlay(
       }
     }
     if (!best) {
-      best = findBestMove(board, turn, difficulty);
+      // 传入将军历史，防止连续将军超 3 次
+      best = findBestMove(board, turn, difficulty, checkHistory);
     }
     if (!best) {
       const winner: Color = turn === 'red' ? 'black' : 'red';
@@ -726,6 +892,17 @@ export function aiSelfPlay(
     newBoard[best.to.row][best.to.col] = newBoard[best.from.row][best.from.col];
     newBoard[best.from.row][best.from.col] = null;
     board = newBoard;
+
+    // 记录将军历史
+    const oppColor: Color = turn === 'red' ? 'black' : 'red';
+    const isCheck = isInCheck(board, oppColor);
+    checkHistory.push({
+      from: best.from,
+      to: best.to,
+      color: turn,
+      isCheck,
+      pieceType: movingPiece.type,
+    });
 
     const move: AIBattleMove = {
       from: best.from,

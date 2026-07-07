@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Color } from '../types';
 import { createInitialBoard, cloneBoard } from '../constants';
-import { findBestMove, evaluate, DIFFICULTY_CONFIG } from '../ai';
+import { findBestMove, evaluate, DIFFICULTY_CONFIG, type MoveHistoryEntry } from '../ai';
 import { getLegalMoves } from '../validate';
 import { isInCheck } from '../judge';
 
@@ -77,5 +77,36 @@ describe('AI 基础', () => {
     board[2][3] = { type: 'king', color: 'red' };
     const move = findBestMove(board, 'black' as Color, 'master');
     expect(move).toBeNull();
+  });
+
+  it('AI 不会连续将军超过 3 次（同一棋子长将禁止）', () => {
+    // 构造一个红车可连续将军黑将的局面，但红车有非将军走法可选
+    const board = createInitialBoard();
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) board[r][c] = null;
+    board[0][3] = { type: 'king', color: 'black' };
+    board[2][3] = { type: 'chariot', color: 'red' };
+    board[9][0] = { type: 'king', color: 'red' }; // 红王不在同列，避免将帅照面
+
+    // 模拟红车从 (3,2) 连续将军 3 次
+    const checkHistory: MoveHistoryEntry[] = [];
+    const redChariotPos = { col: 3, row: 2 };
+    for (let i = 0; i < 3; i++) {
+      checkHistory.push({
+        from: redChariotPos,
+        to: { col: 3, row: 1 },
+        color: 'red' as Color,
+        isCheck: true,
+        pieceType: 'chariot',
+      });
+    }
+    // 第 4 次同棋子将军应被禁止，AI 应选择非将军走法（如横移）
+    const move = findBestMove(board, 'red' as Color, 'master', checkHistory);
+    expect(move).not.toBeNull();
+    if (move) {
+      // 验证：走完后不应将军黑方
+      applyMove(board, move.from, move.to);
+      const stillCheck = isInCheck(board, 'black' as Color);
+      expect(stillCheck).toBe(false);
+    }
   });
 });
