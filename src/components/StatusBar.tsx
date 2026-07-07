@@ -1,4 +1,5 @@
 import { useGameStore } from '@/store/gameStore';
+import { PERSONALITIES } from '@/game/ai';
 import { Loader2, Cpu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -9,6 +10,7 @@ export default function StatusBar() {
   const mode = useGameStore((s) => s.mode);
   const playerColor = useGameStore((s) => s.playerColor);
   const aiThinking = useGameStore((s) => s.aiThinking);
+  const personality = useGameStore((s) => s.personality);
 
   const finished = status === 'redWin' || status === 'blackWin';
   const isCheck = status === 'check';
@@ -21,6 +23,7 @@ export default function StatusBar() {
   if (status === 'blackWin') resultText = '黑方胜';
 
   const aiTurn = (mode === 'pve' && turn !== playerColor) || mode === 'aiva';
+  const showPersonality = (mode === 'pve' || mode === 'aiva') && PERSONALITIES[personality];
 
   return (
     <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-ink-600/60 bg-ink-800/70 px-4 py-3 backdrop-blur">
@@ -55,6 +58,14 @@ export default function StatusBar() {
       </div>
 
       <div className="flex items-center gap-2">
+        {showPersonality && (
+          <span
+            className="rounded-md bg-gold-500/15 px-2.5 py-1 text-xs font-medium text-gold-300 ring-1 ring-gold-500/30"
+            title="AI 当前性格"
+          >
+            {PERSONALITIES[personality].name}
+          </span>
+        )}
         {isCheck && !finished && (
           <span className="animate-slide-up rounded-md bg-cinnabar-600/30 px-3 py-1 text-sm font-bold text-cinnabar-400 ring-1 ring-cinnabar-500/50">
             将军！

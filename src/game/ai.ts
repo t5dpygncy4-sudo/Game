@@ -44,6 +44,87 @@ export const DEFAULT_PIECE_VALUE: PieceWeights = {
 // PST 偏移量（学习系统在此基础上微调）
 export const DEFAULT_PST_BONUS = 1.0;
 
+// ============ AI 性格（多样化思路） ============
+
+export type Personality = 'balanced' | 'aggressive' | 'defensive' | 'positional';
+
+export interface PersonalityProfile {
+  name: string;
+  // 评估函数各项权重
+  mobilityWeight: number;   // 机动性权重
+  kingSafetyWeight: number; // 王安全权重
+  captureBonus: number;    // 吃子额外奖励（激进派更高）
+  pstMultiplier: number;   // PST 权重倍数（位置派更高）
+  // 选择 top-N 走法时的 N（开局多样化）
+  openingVariety: number;
+  // 中局选择容差：分数差 < tolerance 的走法视为等价
+  midgameTolerance: number;
+}
+
+export const PERSONALITIES: Record<Personality, PersonalityProfile> = {
+  // 均衡型：标准权重
+  balanced: {
+    name: '均衡',
+    mobilityWeight: 2,
+    kingSafetyWeight: 1,
+    captureBonus: 0,
+    pstMultiplier: 1.0,
+    openingVariety: 3,
+    midgameTolerance: 15,
+  },
+  // 激进型：重视机动性与吃子，王安全次之
+  aggressive: {
+    name: '激进',
+    mobilityWeight: 4,
+    kingSafetyWeight: 0.6,
+    captureBonus: 30,
+    pstMultiplier: 0.9,
+    openingVariety: 4,
+    midgameTolerance: 25,
+  },
+  // 稳健型：重视王安全，少吃子冒险
+  defensive: {
+    name: '稳健',
+    mobilityWeight: 1,
+    kingSafetyWeight: 2.0,
+    captureBonus: -10,
+    pstMultiplier: 1.1,
+    openingVariety: 3,
+    midgameTolerance: 10,
+  },
+  // 位置型：重视棋子位置（PST），机动性中等
+  positional: {
+    name: '诡异',
+    mobilityWeight: 1.5,
+    kingSafetyWeight: 1.2,
+    captureBonus: 5,
+    pstMultiplier: 1.6,
+    openingVariety: 5,
+    midgameTolerance: 30,
+  },
+};
+
+const PERSONALITY_LIST: Personality[] = ['balanced', 'aggressive', 'defensive', 'positional'];
+
+// 当前生效的性格
+let currentPersonality: Personality = 'balanced';
+
+export function setPersonality(p: Personality): void {
+  currentPersonality = p;
+}
+
+export function getPersonality(): Personality {
+  return currentPersonality;
+}
+
+export function getCurrentPersonalityProfile(): PersonalityProfile {
+  return PERSONALITIES[currentPersonality];
+}
+
+export function randomPersonality(): Personality {
+  return PERSONALITY_LIST[Math.floor(Math.random() * PERSONALITY_LIST.length)];
+}
+
 const PIECE_VALUE: Record<PieceType, number> = { ...DEFAULT_PIECE_VALUE };
 
 // 学习系统可注入权重
@@ -264,6 +345,7 @@ function probeTT(key: bigint): TTEntry | undefined {
 // ============ 评估函数（增强版） ============
 
 export function evaluate(board: Board): number {
+  const profile = getCurrentPersonalityProfile();
   let score = 0;
   let redKing = false;
   let blackKing = false;
@@ -278,7 +360,8 @@ export function evaluate(board: Board): number {
       if (piece.type === 'soldier' && crossedRiver(row, piece.color)) {
         val += 50;
       }
-      val += pstValue(piece.type, col, row, piece.color);
+      // PST 值按性格倍数缩放
+      val += pstValue(piece.type, col, row, piece.color) * profile.pstMultiplier;
       if (piece.color === 'red') {
         score += val;
         if (piece.type === 'king') {
@@ -298,15 +381,15 @@ export function evaluate(board: Board): number {
   if (!redKing) return -MATE_SCORE;
   if (!blackKing) return MATE_SCORE;
 
-  // 王安全评估：王周围有己方棋子保护则加分
-  if (redKingPos) score += kingSafety(board, redKingPos, 'red');
-  if (blackKingPos) score -= kingSafety(board, blackKingPos, 'black');
+  // 王安全评估（按性格权重）
+  if (redKingPos) score += kingSafety(board, redKingPos, 'red') * profile.kingSafetyWeight;
+  if (blackKingPos) score -= kingSafety(board, blackKingPos, 'black') * profile.kingSafetyWeight;
 
   // 机动性评估（只在中浅层计算，避免过慢）
   if (mobilityEnabled) {
     const redMobility = countMobility(board, 'red');
     const blackMobility = countMobility(board, 'black');
-    score += (redMobility - blackMobility) * 2;
+    score += (redMobility - blackMobility) * profile.mobilityWeight;
   }
 
   return score;
@@ -800,6 +883,41 @@ export function findBestMove(
   if (!bestMove) {
     // 兜底：返回第一个合法走法
     return { from: movesToSearch[0].from, to: movesToSearch[0].to };
+  }
+
+  // 多样化选择：在开局阶段或中局，若多个走法分数接近，随机选择
+  // 开局阶段（前 12 步）：从 top-N 中随机选
+  const profile = getCurrentPersonalityProfile();
+  const isOpening = recentChecks.length < 12;
+  const tolerance = isOpening ? 80 : profile.midgameTolerance;
+  const varietyN = isOpening ? profile.openingVariety : Math.min(3, profile.openingVariety);
+
+  // 重新评估 top 走法（最后一轮迭代的结果）
+  if (!searchCancelled) {
+    // 用最后一次迭代的得分排序
+    const finalScored: { move: SearchMove; score: number }[] = [];
+    for (const move of movesToSearch) {
+      makeMove(workBoard, move);
+      const score = -negamax(workBoard, Math.min(config.depth, 4), -Infinity, Infinity, oppColor, 1, true);
+      unmakeMove(workBoard, move);
+      finalScored.push({ move, score });
+      if (searchCancelled) break;
+    }
+    if (finalScored.length > 0) {
+      finalScored.sort((a, b) => (maximizing ? b.score - a.score : a.score - b.score));
+      const topScore = finalScored[0].score;
+      // 若找到将死，直接返回（不容随机）
+      if (Math.abs(topScore) >= MATE_SCORE - 100) {
+        return { from: finalScored[0].move.from, to: finalScored[0].move.to };
+      }
+      // 取分数差 < tolerance 的候选
+      const candidates = finalScored.filter((s) =>
+        maximizing ? topScore - s.score <= tolerance : s.score - topScore <= tolerance,
+      );
+      const n = Math.min(varietyN, candidates.length);
+      const pick = candidates[Math.floor(Math.random() * n)];
+      return { from: pick.move.from, to: pick.move.to };
+    }
   }
 
   return { from: bestMove.from, to: bestMove.to };

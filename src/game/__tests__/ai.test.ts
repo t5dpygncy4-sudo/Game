@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Color } from '../types';
 import { createInitialBoard, cloneBoard } from '../constants';
-import { findBestMove, evaluate, DIFFICULTY_CONFIG, type MoveHistoryEntry } from '../ai';
+import { findBestMove, evaluate, DIFFICULTY_CONFIG, setPersonality, randomPersonality, type MoveHistoryEntry } from '../ai';
 import { getLegalMoves } from '../validate';
 import { isInCheck } from '../judge';
 
@@ -108,5 +108,39 @@ describe('AI 基础', () => {
       const stillCheck = isInCheck(board, 'black' as Color);
       expect(stillCheck).toBe(false);
     }
+  });
+
+  it(
+    'AI 开局多样化：同一局面多次搜索会产生不同的首步走法',
+    () => {
+      // 多次从初始局面让 AI 走，统计不同的首步走法数量
+      const movesSet = new Set<string>();
+      const numTrials = 6;
+      for (let i = 0; i < numTrials; i++) {
+        const board = createInitialBoard();
+        // 每次随机切换性格
+        setPersonality(randomPersonality());
+        const move = findBestMove(board, 'red' as Color, 'beginner');
+        if (move) {
+          movesSet.add(`${move.from.col},${move.from.row}->${move.to.col},${move.to.row}`);
+        }
+      }
+      // 至少应有 2 种不同的首步走法（避免千篇一律）
+      expect(movesSet.size).toBeGreaterThanOrEqual(2);
+    },
+    30000,
+  );
+
+  it('不同性格产生不同评估值', () => {
+    const board = createInitialBoard();
+    setPersonality('aggressive');
+    const aggScore = evaluate(board);
+    setPersonality('defensive');
+    const defScore = evaluate(board);
+    setPersonality('positional');
+    const posScore = evaluate(board);
+    // 不同性格的评估值应有差异（不一定完全不同，但至少有一个不同）
+    const scores = new Set([aggScore, defScore, posScore]);
+    expect(scores.size).toBeGreaterThanOrEqual(2);
   });
 });

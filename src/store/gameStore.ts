@@ -7,9 +7,12 @@ import {
   aiSelfPlay,
   findBestMove,
   setPieceWeights,
+  setPersonality,
+  randomPersonality,
   type Difficulty,
   type AIBattleMove,
   type MoveHistoryEntry,
+  type Personality,
 } from '@/game/ai';
 import {
   applyLearnedWeights,
@@ -45,6 +48,8 @@ interface GameStore {
   difficulty: Difficulty;
   aiThinking: boolean;
   muted: boolean;
+  // AI 性格（每局随机选择，影响走法风格）
+  personality: Personality;
   // 学习系统
   learning: LearningState;
   // 批量训练
@@ -59,6 +64,7 @@ interface GameStore {
   setMode: (mode: GameMode) => void;
   setPlayerColor: (c: Color) => void;
   setDifficulty: (d: Difficulty) => void;
+  setPersonality: (p: Personality) => void;
   toggleMute: () => void;
   requestAIMove: () => void;
   // 学习系统动作
@@ -189,6 +195,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   difficulty: 'advanced',
   aiThinking: false,
   muted: false,
+  personality: 'balanced',
   learning: loadLearningState(),
   batchRunning: false,
   batchTotal: 0,
@@ -271,6 +278,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   newGame: () => {
     const { mode, playerColor } = get();
     const flipped = mode === 'pve' && playerColor === 'black';
+    // 每局随机切换 AI 性格，保证多样化思路
+    const newPersonality = randomPersonality();
+    setPersonality(newPersonality);
     set({
       board: createInitialBoard(),
       turn: 'red',
@@ -281,6 +291,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       lastMove: null,
       aiThinking: false,
       flipped,
+      personality: newPersonality,
     });
   },
 
@@ -297,6 +308,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } else {
       setPieceWeights(get().learning.weights);
     }
+    // 切换模式时也随机切换性格
+    const newPersonality = randomPersonality();
+    setPersonality(newPersonality);
     set({
       mode,
       board: createInitialBoard(),
@@ -308,6 +322,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       lastMove: null,
       aiThinking: false,
       flipped,
+      personality: newPersonality,
     });
   },
 
@@ -332,6 +347,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ difficulty });
   },
 
+  setPersonality: (p) => {
+    setPersonality(p);
+    set({ personality: p });
+  },
+
   toggleMute: () => {
     const next = !get().muted;
     setSoundMuted(next);
@@ -343,6 +363,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (state.mode !== 'pve' && state.mode !== 'aiva') return;
     if (state.status === 'redWin' || state.status === 'blackWin') return;
     if (state.aiThinking) return;
+
+    // 同步当前性格到 AI 引擎（每步都同步，确保性格生效）
+    setPersonality(state.personality);
 
     // pve 模式：只有 AI 颜色走；aiva 模式：双方都由 AI 走
     let aiColor: Color;
