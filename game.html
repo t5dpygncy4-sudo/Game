@@ -43,8 +43,8 @@ const W = CVS.width, H = CVS.height;
 const CFG = {
   scrollSpeed: 95,
   playerSpeedMax: 300,
-  bulletSpeed: 620,           // 玩家子弹速度
-  enemyBulletSpeed: 230,      // 敌弹速度
+  bulletSpeed: 420,           // 玩家子弹速度
+  enemyBulletSpeed: 160,      // 敌弹速度
   fireCooldown: 0.13,
   laserCooldown: 0.16,
   missileCooldown: 1.0,
@@ -692,7 +692,7 @@ class Player{
   fireMissiles(){
     const g=this.game;
     Audio2.missile();
-    const sp=300;
+    const sp=220;
     const target=g.findNearestEnemy(this.x+200,this.y);
     g.addBullet(new Bullet(this.x,this.y-10,sp,-30,{w:8,h:8,dmg:2,color:COLORS.missile,friendly:true,missile:true,target}));
     g.addBullet(new Bullet(this.x,this.y+10,sp,30,{w:8,h:8,dmg:2,color:COLORS.missile,friendly:true,missile:true,target}));
@@ -793,12 +793,18 @@ class Enemy{
       case 'asteroid_m': this.w=40;this.h=40;this.maxHp=5;this.score=180;this.vx=-55;this.vy=rand(-15,15);this.spin=rand(-1.5,1.5);this.ang=0;this.shape=this.genRock();break;
       case 'asteroid_l': this.w=64;this.h=64;this.maxHp=10;this.score=350;this.vx=-40;this.vy=rand(-10,10);this.spin=rand(-1,1);this.ang=0;this.shape=this.genRock();break;
       case 'miner':      this.w=30;this.h=26;this.maxHp=4;this.score=250;this.vx=-80;this.vy=0;this.baseY=this.y;break;
+      case 'comet':      this.w=28;this.h=16;this.maxHp=2;this.score=200;this.vx=-160;this.vy=rand(-40,40);this.spin=0;this.ang=Math.atan2(this.vy,this.vx);break; // 彗星：高速直线+拖尾
+      case 'sentinel':   this.w=34;this.h=34;this.maxHp=6;this.score=300;this.vx=-45;this.vy=0;break; // 哨兵：环形弹幕
       case 'turret':     this.w=32;this.h=28;this.maxHp=6;this.score=300;this.vx=-50;this.vy=0;break;
       case 'drone_swarm':this.w=22;this.h=22;this.maxHp=1;this.score=120;this.vx=-100;this.vy=0;this.baseY=this.y;break;
       case 'laser_node': this.w=30;this.h=30;this.maxHp=5;this.score=280;this.vx=-45;this.vy=0;this.charge=0;break;
+      case 'saw':        this.w=44;this.h=44;this.maxHp=8;this.score=280;this.vx=-65;this.vy=0;this.spin=4;this.ang=0;break; // 旋转锯片
+      case 'shield_bot': this.w=32;this.h=30;this.maxHp=5;this.score=320;this.vx=-55;this.vy=0;this.shieldHp=4;this.baseY=this.y;break; // 护盾机器人
       case 'core_cell':  this.w=28;this.h=28;this.maxHp=4;this.score=200;this.vx=-60;this.vy=0;this.baseY=this.y;break;
       case 'defender':   this.w=30;this.h=30;this.maxHp=7;this.score=350;this.vx=-70;this.vy=0;this.baseY=this.y;break;
       case 'seeker':     this.w=24;this.h=24;this.maxHp=3;this.score=220;this.vx=-90;this.vy=0;break;
+      case 'splitter':   this.w=40;this.h=40;this.maxHp=6;this.score=300;this.vx=-55;this.vy=0;break; // 分裂体：死后分裂成2个小敌人
+      case 'portal':     this.w=36;this.h=36;this.maxHp=8;this.score=400;this.vx=-40;this.vy=0;this.spawnTimer=2;this.baseY=this.y;break; // 传送门：周期生成小敌人
     }
   }
   genRock(){
