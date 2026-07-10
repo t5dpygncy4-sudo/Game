@@ -325,6 +325,46 @@ class Crystal{
   }
 }
 
+/* ------------------------------ 生命补给道具 ------------------------------ */
+class LifeDrop{
+  constructor(x,y){
+    this.x=x;this.y=y;this.w=26;this.h=26;
+    this.vx=-40;this.vy=0;this.t=0;this.dead=false;
+  }
+  bounds(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+  update(dt){
+    this.t+=dt;
+    this.x+=this.vx*dt;
+    this.y+=Math.sin(this.t*2.5)*10*dt;
+    if(this.x<-40) this.dead=true;
+  }
+  apply(player){
+    Audio2.levelup();
+    if(player.lives<5){ player.lives++; spawnExplosion(player.game.particles,this.x,this.y,'#ff5d7a',14,1); player.game.toast('生命 +1  (剩余 '+player.lives+')'); }
+    else { player.game.toast('生命已满'); }
+  }
+  draw(ctx,camX){
+    const sx=this.x-camX;
+    ctx.save();
+    ctx.translate(sx,this.y);
+    const pulse=1+Math.sin(this.t*4)*0.08;
+    ctx.scale(pulse,pulse);
+    ctx.shadowBlur=18; ctx.shadowColor='#ff5d7a';
+    // 心形
+    ctx.fillStyle='#ff5d7a';
+    ctx.beginPath();
+    ctx.moveTo(0,8);
+    ctx.bezierCurveTo(-12,-2,-10,-12,0,-6);
+    ctx.bezierCurveTo(10,-12,12,-2,0,8);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.fillStyle='#ffd0dc';
+    ctx.beginPath();
+    ctx.arc(-4,-3,2.5,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
 /* ------------------------------ 障碍物（不可摧毁，玩家躲避） ------------------------------ */
 class Obstacle{
   constructor(type,x,y,game){
@@ -647,32 +687,39 @@ class Player{
     spawnExplosion(this.game.particles,this.x,this.y,COLORS.player,20,1.2);
   }
   update(dt){
-    // 数字键升级
-    for(let i=1;i<=6;i++){ if(Input.justPressed(String(i))) this.tryUpgrade(i); }
+    // 过渡动画期间：位置由 Game.update 控制，跳过输入与限位
+    const transitioning = (this.game.state==='LEVEL_OUT'||this.game.state==='LEVEL_IN');
+    if(!transitioning){
+      // 数字键升级
+      for(let i=1;i<=6;i++){ if(Input.justPressed(String(i))) this.tryUpgrade(i); }
 
-    const maxSp = CFG.playerSpeedMax + this.speedLevel*60;  // 每级+60速度
-    const accel = 2600 + this.speedLevel*400;               // 每级+400加速度
-    let ax=0,ay=0;
-    if(Input.down('arrowleft','a')) ax-=1;
-    if(Input.down('arrowright','d')) ax+=1;
-    if(Input.down('arrowup','w')) ay-=1;
-    if(Input.down('arrowdown','s')) ay+=1;
-    this.vx += ax*accel*dt;
-    this.vy += ay*accel*dt;
-    this.vx -= this.vx*12*dt;
-    this.vy -= this.vy*12*dt;
-    this.vx = clamp(this.vx,-maxSp,maxSp);
-    this.vy = clamp(this.vy,-maxSp,maxSp);
-    this.x += this.vx*dt; this.y += this.vy*dt;
-    this.x = clamp(this.x, this.game.camX+24, this.game.camX+W-24);
-    this.y = clamp(this.y, 16, H-16);
+      const maxSp = CFG.playerSpeedMax + this.speedLevel*60;  // 每级+60速度
+      const accel = 2600 + this.speedLevel*400;               // 每级+400加速度
+      let ax=0,ay=0;
+      if(Input.down('arrowleft','a')) ax-=1;
+      if(Input.down('arrowright','d')) ax+=1;
+      if(Input.down('arrowup','w')) ay-=1;
+      if(Input.down('arrowdown','s')) ay+=1;
+      this.vx += ax*accel*dt;
+      this.vy += ay*accel*dt;
+      this.vx -= this.vx*12*dt;
+      this.vy -= this.vy*12*dt;
+      this.vx = clamp(this.vx,-maxSp,maxSp);
+      this.vy = clamp(this.vy,-maxSp,maxSp);
+      this.x += this.vx*dt; this.y += this.vy*dt;
+      this.x = clamp(this.x, this.game.camX+24, this.game.camX+W-24);
+      this.y = clamp(this.y, 16, H-16);
 
-    this.fireTimer-=dt;
-    if(Input.down(' ','j') && this.fireTimer<=0) this.shoot();
+      this.fireTimer-=dt;
+      if(Input.down(' ','j') && this.fireTimer<=0) this.shoot();
 
-    if(this.hasMissile){
-      this.missileTimer-=dt;
-      if(this.missileTimer<=0){ this.missileTimer=CFG.missileCooldown; this.fireMissiles(); }
+      if(this.hasMissile){
+        this.missileTimer-=dt;
+        if(this.missileTimer<=0){ this.missileTimer=CFG.missileCooldown; this.fireMissiles(); }
+      }
+    } else {
+      // 过渡中保持Y方向轻微跟随，避免突兀
+      this.y += (H/2 - this.y)*3*dt;
     }
 
     if(this.invincible>0) this.invincible-=dt;
@@ -904,6 +951,7 @@ class Enemy{
     spawnExplosion(this.game.particles,this.x,this.y,COLORS.enemy,isBig?22:12,isBig?1.4:1);
     if(isBig) Audio2.bigExplode(); else Audio2.explode();
     if(this.dropCrystal) this.game.spawnCrystal(this.x,this.y);
+    if(isBig && Math.random()<0.15) this.game.spawnLifeDrop(this.x,this.y);
   }
   color(){
     return {asteroid_s:'#7a5a3a',asteroid_m:'#7a5a3a',asteroid_l:'#7a5a3a',miner:'#ff8a3c',
@@ -1070,6 +1118,7 @@ class Boss{
         choice(['#ff9a3c','#ffd24d','#ff4d6d','#fff']),6,1.2);
     }
     for(let i=0;i<3;i++) this.game.spawnCrystal(this.x+rand(-40,40),this.y+rand(-40,40));
+    this.game.spawnLifeDrop(this.x, this.y);
   }
   bossColor(){ return this.type===1?COLORS.boss1:(this.type===2?COLORS.boss2:COLORS.boss3); }
   draw(ctx,camX){
@@ -1187,7 +1236,7 @@ class Game{
   }
   reset(){
     this.player=new Player(this);
-    this.bullets=[]; this.enemies=[]; this.obstacles=[]; this.crystals=[]; this.particles=[];
+    this.bullets=[]; this.enemies=[]; this.obstacles=[]; this.crystals=[]; this.lifeDrops=[]; this.particles=[];
     this.boss=null; this.camX=0;
     this.score=0; this.kills=0;
     this.levelIndex=0;
@@ -1212,6 +1261,7 @@ class Game{
   toast(t){ this.toastText=t; this.toastTimer=2.5; }
   addBullet(b){ this.bullets.push(b); if(this.bullets.length>CFG.maxBullets) this.bullets.shift(); }
   spawnCrystal(x,y){ this.crystals.push(new Crystal(x,y)); }
+  spawnLifeDrop(x,y){ this.lifeDrops.push(new LifeDrop(x,y)); }
   findNearestEnemy(x,y){
     let best=null,bd=Infinity;
     for(const e of this.enemies){ const d=dist2(x,y,e.x,e.y); if(d<bd){bd=d;best=e;} }
@@ -1266,8 +1316,49 @@ class Game{
       this.boss.update(dt);
       if(this.boss.dead){
         this.boss=null;
-        if(this.levelIndex<LEVELS.length-1){ this.startLevel(this.levelIndex+1); this.state='PLAYING'; }
+        if(this.levelIndex<LEVELS.length-1){
+          // 进入过关过渡：飞机飞出右端
+          this.state='LEVEL_OUT';
+          this.transitionTimer=0;
+        }
         else { this.state='WIN'; }
+      }
+    }
+
+    // 过渡：飞机飞出右端
+    if(this.state==='LEVEL_OUT'){
+      this.transitionTimer+=dt;
+      // 飞机向右加速飞出
+      this.player.vx += 1800*dt;
+      this.player.vx = clamp(this.player.vx, 0, 900);
+      this.player.x += this.player.vx*dt;
+      // 飞出屏幕后切换关卡，从左侧飞入
+      if(this.player.x > this.camX + W + 80){
+        this.startLevel(this.levelIndex+1);
+        this.player.x = this.camX - 60;
+        this.player.y = H/2;
+        this.player.vx = 420; this.player.vy = 0;
+        this.player.invincible = 1.5;
+        this.state='LEVEL_IN';
+        this.transitionTimer=0;
+      }
+    }
+    // 过渡：飞机从左侧飞入
+    if(this.state==='LEVEL_IN'){
+      this.transitionTimer+=dt;
+      const targetX = this.camX + 160;
+      // 保持匀速飞入，接近目标时减速
+      const dx = targetX - this.player.x;
+      if(dx > 80) this.player.vx = 420;
+      else this.player.vx = Math.max(120, dx*5);
+      this.player.x += this.player.vx*dt;
+      // 让滚动也开始
+      this.camX += this.level.scrollSpeed*dt;
+      this.scrollDistance += this.level.scrollSpeed*dt;
+      if(this.player.x >= targetX){
+        this.player.x = targetX;
+        this.player.vx = 0;
+        this.state='PLAYING';
       }
     }
 
@@ -1279,6 +1370,9 @@ class Game{
 
     for(const c of this.crystals) c.update(dt);
     this.crystals=this.crystals.filter(c=>!c.dead);
+
+    for(const l of this.lifeDrops) l.update(dt);
+    this.lifeDrops=this.lifeDrops.filter(l=>!l.dead);
 
     for(const p of this.particles) p.update(dt);
     this.particles=this.particles.filter(p=>!p.dead);
@@ -1364,6 +1458,11 @@ class Game{
         if(p.crystals<CFG.maxCrystals) c.apply(p);
       }
     }
+    // 生命补给拾取
+    for(const l of this.lifeDrops){
+      if(l.dead) continue;
+      if(aabb(pb,l.bounds())){ l.dead=true; l.apply(p); }
+    }
   }
 
   /* ------------------------------ 渲染 ------------------------------ */
@@ -1375,6 +1474,7 @@ class Game{
     this.starfield.draw(CTX);
     if(this.state!=='TITLE'){
       for(const c of this.crystals) c.draw(CTX,this.camX);
+      for(const l of this.lifeDrops) l.draw(CTX,this.camX);
       for(const o of this.obstacles) o.draw(CTX,this.camX);
       for(const e of this.enemies) e.draw(CTX,this.camX);
       if(this.boss) this.boss.draw(CTX,this.camX);
