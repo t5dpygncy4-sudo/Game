@@ -24,7 +24,7 @@
 <body>
 <div id="wrap"><canvas id="game" width="900" height="600"></canvas></div>
 <div id="hint">
-  方向键/WASD 移动 · 空格/J 射击 · <b>数字键 1-6 升级对应能力</b> · Shift/K 炸弹 · P 暂停 · 回车 开始
+  方向键/WASD 移动 · 空格/J 射击 · <b>数字键 1-6 升级对应能力</b> · P 暂停 · 回车 开始
 </div>
 
 <script>
@@ -579,7 +579,6 @@ class Player{
     this.vx=0; this.vy=0;
     this.w=38; this.h=24;
     this.lives=3;
-    this.bombs=2;
     this.crystals=0;           // 持有能量晶体
     this.abilities=new Set();  // 已解锁能力
     this.fireTimer=0;
@@ -651,7 +650,6 @@ class Player{
       this.missileTimer-=dt;
       if(this.missileTimer<=0){ this.missileTimer=CFG.missileCooldown; this.fireMissiles(); }
     }
-    if(Input.justPressed('shift','k') && this.bombs>0) this.useBomb();
 
     if(this.invincible>0) this.invincible-=dt;
     if(this.shieldFlash>0) this.shieldFlash-=dt;
@@ -696,18 +694,6 @@ class Player{
     const target=g.findNearestEnemy(this.x+200,this.y);
     g.addBullet(new Bullet(this.x,this.y-10,sp,-30,{w:8,h:8,dmg:2,color:COLORS.missile,friendly:true,missile:true,target}));
     g.addBullet(new Bullet(this.x,this.y+10,sp,30,{w:8,h:8,dmg:2,color:COLORS.missile,friendly:true,missile:true,target}));
-  }
-  useBomb(){
-    this.bombs--;
-    Audio2.bomb();
-    this.game.flash=0.5;
-    this.game.bullets=this.game.bullets.filter(b=>b.friendly);
-    for(const e of this.game.enemies){ e.hp-=6; spawnExplosion(this.game.particles,e.x,e.y,'#ffd24d',8,1); }
-    if(this.game.boss) this.game.boss.hp-=14;
-    for(let i=0;i<60;i++){
-      const ang=rand(0,Math.PI*2),sp=rand(200,500);
-      this.game.particles.push(new Particle(this.x,this.y,Math.cos(ang)*sp,Math.sin(ang)*sp,rand(0.4,0.9),'#ffd24d',rand(3,6)));
-    }
   }
   hurt(){
     if(this.invincible>0) return false;
@@ -1418,7 +1404,7 @@ class Game{
       CTX.textAlign='left';
     }
 
-    // 左下：生命与炸弹
+    // 左下：生命
     CTX.font='bold 18px monospace';
     by=H-14-24;
     CTX.fillStyle=COLORS.player; CTX.fillText('LIFE',14,by);
@@ -1427,9 +1413,6 @@ class Game{
       CTX.moveTo(60+i*20,by-4); CTX.lineTo(54+i*20,by-12); CTX.lineTo(70+i*20,by-12);
       CTX.closePath(); CTX.fill();
     }
-    by-=24;
-    CTX.fillStyle=COLORS.missile; CTX.fillText('BOMB',14,by);
-    CTX.fillStyle='#fff'; CTX.font='bold 16px monospace'; CTX.fillText('x'+this.player.bombs,70,by);
 
     // 关卡进度条
     if(this.state==='PLAYING' && !this.bossTriggered){
@@ -1489,7 +1472,6 @@ class Game{
       '方向键 / WASD   移动',
       '空格 / J        射击（按住连发）',
       '数字键 1-6      升级对应能力（消耗1-6个能量体）',
-      'Shift / K       释放炸弹',
       'P / Esc         暂停',
       '',
       '升级项：1加速 2追踪弹 3散弹 4激光(与散弹互斥) 5僚机 6护盾',
