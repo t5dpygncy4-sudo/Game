@@ -45,9 +45,11 @@ const CFG = {
   playerSpeedMax: 300,
   bulletSpeed: 420,           // 玩家子弹速度
   enemyBulletSpeed: 160,      // 敌弹速度
-  fireCooldown: 0.13,
-  laserCooldown: 0.16,
+  fireCooldown: 0.156,        // 降低20%射速
+  laserCooldown: 0.192,
   missileCooldown: 1.0,
+  missileSpeed: 300,          // 追踪导弹基础速度
+  maxCrystals: 10,            // 能量晶体上限
   invincibleTime: 1.4,
   spawnPadding: 40,
   playerHitScale: 0.5,
@@ -290,7 +292,7 @@ class Bullet{
 class Crystal{
   constructor(x,y){
     this.x=x;this.y=y;this.w=20;this.h=20;
-    this.vx=-70;this.vy=0;this.t=0;this.dead=false;
+    this.vx=-40;this.vy=0;this.t=0;this.dead=false;
   }
   bounds(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
   update(dt){
@@ -579,8 +581,10 @@ class Player{
     this.vx=0; this.vy=0;
     this.w=38; this.h=24;
     this.lives=3;
-    this.crystals=0;           // 持有能量晶体
+    this.crystals=0;           // 持有能量晶体（上限10）
     this.abilities=new Set();  // 已解锁能力
+    this.speedLevel=0;         // 加速等级 0-3
+    this.missileLevel=0;       // 追踪导弹等级 0-3
     this.fireTimer=0;
     this.missileTimer=1.0;
     this.invincible=0;
@@ -592,10 +596,10 @@ class Player{
   }
   get hasCannon(){ return this.abilities.has('spread'); }
   get hasLaser(){ return this.abilities.has('laser'); }
-  get hasMissile(){ return this.abilities.has('missile'); }
+  get hasMissile(){ return this.missileLevel>0; }
   get hasWingman(){ return this.abilities.has('wingman'); }
   get hasShield(){ return this.abilities.has('shield'); }
-  get hasSpeed(){ return this.abilities.has('speed'); }
+  get hasSpeed(){ return this.speedLevel>0; }
   bounds(){ const s=CFG.playerHitScale; return {x:this.x-this.w*s/2,y:this.y-this.h*s/2,w:this.w*s,h:this.h*s}; }
 
   // 数字键1-6升级对应能力
@@ -603,6 +607,26 @@ class Player{
     if(slot<1||slot>6) return;
     const up = UPGRADES[slot-1];
     if(this.crystals < up.cost){ this.game.toast('能量不足: '+this.crystals+'/'+up.cost+' ('+up.name+')'); return; }
+    // 加速：3级可重复升级
+    if(up.id==='speed'){
+      if(this.speedLevel>=3){ this.game.toast('加速已满级 3/3'); return; }
+      this.crystals -= up.cost;
+      this.speedLevel++;
+      Audio2.levelup();
+      this.game.toast('加速 Lv'+this.speedLevel+'/3 (-'+up.cost+'能量)');
+      spawnExplosion(this.game.particles,this.x,this.y,COLORS.player,20,1.2);
+      return;
+    }
+    // 追踪导弹：3级可重复升级，每次+2枚
+    if(up.id==='missile'){
+      if(this.missileLevel>=3){ this.game.toast('追踪弹已满级 3/3'); return; }
+      this.crystals -= up.cost;
+      this.missileLevel++;
+      Audio2.levelup();
+      this.game.toast('追踪弹 Lv'+this.missileLevel+'/3 (-'+up.cost+'能量)');
+      spawnExplosion(this.game.particles,this.x,this.y,COLORS.missile,20,1.2);
+      return;
+    }
     // 僚机/护盾可重复购买，其它一次性
     if(up.id!=='wingman' && up.id!=='shield' && this.abilities.has(up.id)){
       this.game.toast(up.name+' 已解锁');
@@ -626,8 +650,8 @@ class Player{
     // 数字键升级
     for(let i=1;i<=6;i++){ if(Input.justPressed(String(i))) this.tryUpgrade(i); }
 
-    const maxSp = this.hasSpeed ? 430 : CFG.playerSpeedMax;
-    const accel = this.hasSpeed ? 3200 : 2600;
+    const maxSp = CFG.playerSpeedMax + this.speedLevel*60;  // 每级+60速度
+    const accel = 2600 + this.speedLevel*400;               // 每级+400加速度
     let ax=0,ay=0;
     if(Input.down('arrowleft','a')) ax-=1;
     if(Input.down('arrowright','d')) ax+=1;
@@ -659,7 +683,7 @@ class Player{
     if(Math.random()<0.9){
       this.game.particles.push(new Particle(this.x-18,this.y+rand(-5,5),-rand(80,160),rand(-20,20),0.3,COLORS.playerEngine,rand(2,4)));
     }
-    if(this.hasSpeed && Math.random()<0.5){
+    if(this.speedLevel>0 && Math.random()<0.3+this.speedLevel*0.1){
       this.game.particles.push(new Particle(this.x-14,this.y+rand(-3,3),-rand(120,200),rand(-10,10),0.22,'#ff5a3c',rand(1,3)));
     }
   }
@@ -690,10 +714,14 @@ class Player{
   fireMissiles(){
     const g=this.game;
     Audio2.missile();
-    const sp=220;
+    const sp=CFG.missileSpeed + (this.missileLevel-1)*40; // 每级加速40
+    const count=this.missileLevel*2;                       // 每级2枚
     const target=g.findNearestEnemy(this.x+200,this.y);
-    g.addBullet(new Bullet(this.x,this.y-10,sp,-30,{w:8,h:8,dmg:2,color:COLORS.missile,friendly:true,missile:true,target}));
-    g.addBullet(new Bullet(this.x,this.y+10,sp,30,{w:8,h:8,dmg:2,color:COLORS.missile,friendly:true,missile:true,target}));
+    for(let i=0;i<count;i++){
+      const offset=(i-(count-1)/2)*14;
+      const vy=offset*3;
+      g.addBullet(new Bullet(this.x,this.y+offset,sp,vy,{w:8,h:8,dmg:2,color:COLORS.missile,friendly:true,missile:true,target}));
+    }
   }
   hurt(){
     if(this.invincible>0) return false;
@@ -1328,10 +1356,13 @@ class Game{
       }
       if(p.invincible>0 && p.invincible<0.1) break; // 已受伤跳出
     }
-    // 晶体拾取
+    // 晶体拾取（满上限后碰到直接消失）
     for(const c of this.crystals){
       if(c.dead) continue;
-      if(aabb(pb,c.bounds())){ c.dead=true; c.apply(p); }
+      if(aabb(pb,c.bounds())){
+        c.dead=true;
+        if(p.crystals<CFG.maxCrystals) c.apply(p);
+      }
     }
   }
 
@@ -1375,7 +1406,7 @@ class Game{
     let by=H-14;
     CTX.fillStyle=COLORS.crystal;
     CTX.font='bold 18px monospace';
-    CTX.fillText('能量: '+this.player.crystals, 14, by);
+    CTX.fillText('能量: '+this.player.crystals+'/'+CFG.maxCrystals, 14, by);
 
     // 6个升级项列表（右下竖排）
     const px=W-180, py0=H-14;
@@ -1383,24 +1414,29 @@ class Game{
     for(let i=0;i<UPGRADES.length;i++){
       const up=UPGRADES[i];
       const py=py0 - (5-i)*20;
-      const owned = this.player.abilities.has(up.id);
+      // 多级升级：speed/missile 使用等级判定；其它用 abilities
+      let owned=false, levelText='';
+      if(up.id==='speed'){ owned=this.player.speedLevel>0; levelText=' '+this.player.speedLevel+'/3'; }
+      else if(up.id==='missile'){ owned=this.player.missileLevel>0; levelText=' '+this.player.missileLevel+'/3'; }
+      else { owned=this.player.abilities.has(up.id); }
+      const maxed = (up.id==='speed'&&this.player.speedLevel>=3) || (up.id==='missile'&&this.player.missileLevel>=3);
       const enough = this.player.crystals >= up.cost;
       // 背景
-      CTX.fillStyle = owned ? 'rgba(94,247,255,0.15)' : (enough ? 'rgba(255,210,77,0.1)' : 'rgba(40,40,40,0.3)');
+      CTX.fillStyle = maxed ? 'rgba(94,255,154,0.25)' : (owned ? 'rgba(94,247,255,0.15)' : (enough ? 'rgba(255,210,77,0.1)' : 'rgba(40,40,40,0.3)'));
       CTX.fillRect(px-4, py-14, 176, 18);
       // 按键
-      CTX.fillStyle = owned ? '#5dff9a' : (enough ? COLORS.crystal : '#556');
+      CTX.fillStyle = maxed ? '#5dff9a' : (owned ? '#5dff9a' : (enough ? COLORS.crystal : '#556'));
       CTX.fillText('['+up.key+']', px, py);
       // 名称
-      CTX.fillStyle = owned ? '#5dff9a' : '#cfe';
-      let label = up.name;
+      CTX.fillStyle = maxed ? '#5dff9a' : (owned ? '#5dff9a' : '#cfe');
+      let label = up.name + levelText;
       if(up.id==='wingman') label += ' '+this.player.wingmen.length+'/3';
       if(up.id==='shield') label += ' '+this.player.shieldHits+'/3';
       CTX.fillText(label, px+24, py);
       // 消耗
-      CTX.fillStyle = owned ? '#5dff9a' : (enough ? COLORS.crystal : '#933');
+      CTX.fillStyle = maxed ? '#5dff9a' : (owned ? '#5dff9a' : (enough ? COLORS.crystal : '#933'));
       CTX.textAlign='right';
-      CTX.fillText(owned?'已学':('-'+up.cost), px+170, py);
+      CTX.fillText(maxed?'满级':(owned?'-'+up.cost+' →':('-'+up.cost)), px+170, py);
       CTX.textAlign='left';
     }
 
