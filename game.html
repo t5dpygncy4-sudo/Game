@@ -110,7 +110,6 @@ const Audio2 = {
   bigExplode(){ this.beep(90,0.5,'sawtooth',0.08,25); },
   pickup(){ this.beep(700,0.08,'sine',0.05,1400); },
   levelup(){ this.beep(523,0.1,'sine',0.06,1046); },
-  bomb(){ this.beep(120,0.4,'sawtooth',0.08,30); },
   alarm(){ this.beep(440,0.2,'square',0.06,660); },
   hurt(){ this.beep(220,0.2,'square',0.06,80); },
 };
@@ -1300,6 +1299,7 @@ class Game{
         this.bossTriggered=true;
         this.boss=new Boss(this,this.level.bossType);
         this.state='BOSS';
+        this.obstacles=[]; // 清空障碍物腾出战斗空间
         this.toast('WARNING: BOSS 来袭');
       }
     }
