@@ -1554,17 +1554,22 @@ class Game{
     // 过渡：飞机从左侧飞入
     if(this.state==='LEVEL_IN'){
       this.transitionTimer+=dt;
-      const targetX = this.camX + 160;
-      // 保持匀速飞入，接近目标时减速
-      const dx = targetX - this.player.x;
-      if(dx > 80) this.player.vx = 420;
-      else this.player.vx = Math.max(120, dx*5);
-      this.player.x += this.player.vx*dt;
       // 让滚动也开始
       this.camX += this.level.scrollSpeed*dt;
       this.scrollDistance += this.level.scrollSpeed*dt;
-      if(this.player.x >= targetX){
-        this.player.x = targetX;
+      // 用相对屏幕坐标判断（避免target随camX移动导致追不上）
+      const screenX = this.player.x - this.camX; // 飞机在屏幕上的x位置
+      const targetScreenX = 160;
+      if(screenX < targetScreenX - 40){
+        // 远距离：相对屏幕快速右移（飞机速度 = 滚动速度 + 额外）
+        this.player.vx = this.level.scrollSpeed + 300;
+      } else {
+        // 近距离：相对屏幕慢速靠拢
+        this.player.vx = this.level.scrollSpeed + Math.max(40, (targetScreenX - screenX)*4);
+      }
+      this.player.x += this.player.vx*dt;
+      if(this.player.x - this.camX >= targetScreenX){
+        this.player.x = this.camX + targetScreenX;
         this.player.vx = 0;
         this.state='PLAYING';
       }
