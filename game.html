@@ -48,7 +48,7 @@ const CFG = {
   fireCooldown: 0.156,        // 降低20%射速
   laserCooldown: 0.192,
   missileCooldown: 1.0,
-  missileSpeed: 300,          // 追踪导弹基础速度
+  missileSpeed: 420,          // 追踪导弹基础速度（提速）
   maxCrystals: 10,            // 能量晶体上限
   invincibleTime: 1.4,
   spawnPadding: 40,
@@ -63,7 +63,7 @@ const COLORS = {
   enemy:'#ff5d7a', enemyBullet:'#ff9a3c',
   crystal:'#ffd24d',
   obstacle:'#8a6a4a', obstacleActive:'#ff4d6d',
-  boss1:'#b07a3a', boss2:'#9a4dff', boss3:'#ff3a6d',
+  boss1:'#b07a3a', boss2:'#9a4dff', boss3:'#ff3a6d', boss4:'#ff3a1a',
 };
 
 /* ------------------------------ 输入 ------------------------------ */
@@ -178,6 +178,11 @@ class Starfield{
       for(let i=0;i<6;i++) blobs.push({x:rand(0,W*2),y:rand(0,H),r:rand(120,240),sp:rand(10,30),c:choice(['#5a1a3a','#3a1a5a','#1a3a5a'])});
       return {nebula:blobs};
     }
+    if(t==='fire'){
+      const embers=[];
+      for(let i=0;i<40;i++) embers.push({x:rand(0,W),y:rand(0,H),r:rand(1,3),sp:rand(60,160),vy:rand(-30,-10)});
+      return {embers};
+    }
     const neb=[];
     for(let i=0;i<5;i++) neb.push({x:rand(0,W*2),y:rand(0,H),r:rand(120,260),c:choice(['#3a1a5a','#1a3a5a','#5a1a3a']),sp:rand(8,22)});
     return {nebula:neb};
@@ -193,11 +198,19 @@ class Starfield{
     if(this.themeObj.pipes){
       for(const p of this.themeObj.pipes){ p.x-=p.sp*dt; if(p.x<-p.w){ p.x=p.gap; } }
     }
+    if(this.themeObj.embers){
+      for(const e of this.themeObj.embers){
+        e.x-=e.sp*dt; e.y+=e.vy*dt;
+        if(e.x<0){ e.x=W; e.y=rand(0,H); }
+        if(e.y<0){ e.y=H; }
+      }
+    }
   }
   draw(ctx){
     const g=ctx.createLinearGradient(0,0,0,H);
     if(this.theme==='fortress'){ g.addColorStop(0,'#0a0a14'); g.addColorStop(1,'#140a1a'); }
     else if(this.theme==='core'){ g.addColorStop(0,'#0a0510'); g.addColorStop(0.5,'#1a0820'); g.addColorStop(1,'#050208'); }
+    else if(this.theme==='fire'){ g.addColorStop(0,'#1a0500'); g.addColorStop(0.5,'#2a0a04'); g.addColorStop(1,'#0a0202'); }
     else { g.addColorStop(0,'#05060f'); g.addColorStop(0.5,'#08081a'); g.addColorStop(1,'#04050c'); }
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
     if(this.themeObj.nebula){
@@ -215,6 +228,14 @@ class Starfield{
         ctx.fillRect(x,p.y,p.w,8);
         ctx.fillRect(x+10,p.y+14,p.w-20,6);
       }
+    }
+    if(this.themeObj.embers){
+      for(const e of this.themeObj.embers){
+        ctx.shadowBlur=8; ctx.shadowColor='#ff6a1a';
+        ctx.fillStyle=choice(['#ff9a3c','#ffd24d','#ff5a1a']);
+        ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill();
+      }
+      ctx.shadowBlur=0;
     }
     for(const L of this.layers){
       ctx.fillStyle=L.color;
@@ -260,11 +281,28 @@ class Bullet{
     const sx=this.x-camX;
     ctx.save();
     if(this.laser){
-      ctx.shadowBlur=12; ctx.shadowColor=this.color;
-      ctx.fillStyle=this.color;
-      ctx.fillRect(sx-this.w/2,this.y-this.h/2,this.w,this.h);
-      ctx.fillStyle='#fff';
-      ctx.fillRect(sx-this.w/4,this.y-this.h/2,this.w/2,this.h);
+      // 放射状光线：从原点向后扩散的梯形光束
+      const len=this.h;
+      const tailW=this.w*0.4;
+      ctx.shadowBlur=14; ctx.shadowColor=this.color;
+      const g=ctx.createLinearGradient(sx,0,sx+len,0);
+      g.addColorStop(0,this.color); g.addColorStop(0.6,'rgba(255,77,141,0.6)'); g.addColorStop(1,'rgba(255,77,141,0)');
+      ctx.fillStyle=g;
+      ctx.beginPath();
+      ctx.moveTo(sx, this.y-this.w/2);
+      ctx.lineTo(sx+len, this.y-tailW);
+      ctx.lineTo(sx+len, this.y+tailW);
+      ctx.lineTo(sx, this.y+this.w/2);
+      ctx.closePath(); ctx.fill();
+      // 内核高亮
+      ctx.shadowBlur=0;
+      ctx.fillStyle='rgba(255,255,255,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(sx, this.y-this.w/4);
+      ctx.lineTo(sx+len, this.y-tailW*0.4);
+      ctx.lineTo(sx+len, this.y+tailW*0.4);
+      ctx.lineTo(sx, this.y+this.w/4);
+      ctx.closePath(); ctx.fill();
     } else if(this.missile){
       ctx.translate(sx,this.y); ctx.rotate(this.angle);
       ctx.shadowBlur=8; ctx.shadowColor=this.color;
@@ -382,6 +420,9 @@ class Obstacle{
       // 第三关：能量屏障、尖刺
       case 'barrier':     this.w=20; this.h=H; this.cycle=1.8; this.activeT=0.9; break;
       case 'spike':       this.w=30; this.h=30; this.hp=999; break;
+      // 第四关：火柱（上下交替喷射）
+      case 'fire_pillar_top': this.w=50; this.h=260; this.cycle=2.2; this.activeT=1.3; break;
+      case 'fire_pillar_bot': this.w=50; this.h=260; this.cycle=2.2; this.activeT=1.3; break;
     }
   }
   // 返回所有碰撞矩形（障碍物可能有多个碰撞区域，如带缺口的墙）
@@ -405,12 +446,20 @@ class Obstacle{
         return on ? [{x:this.x-this.w/2, y:0, w:this.w, h:H}] : [];
       }
       case 'spike': return [{x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}];
+      case 'fire_pillar_top': {
+        const on = (this.t % this.cycle) < this.activeT;
+        return on ? [{x:this.x-this.w/2, y:0, w:this.w, h:this.h}] : [];
+      }
+      case 'fire_pillar_bot': {
+        const on = (this.t % this.cycle) < this.activeT;
+        return on ? [{x:this.x-this.w/2, y:H-this.h, w:this.w, h:this.h}] : [];
+      }
     }
     return [];
   }
   // 是否处于激活（危险）状态，用于绘制
   isActive(){
-    if(['laser_gate','electric','barrier'].includes(this.type)){
+    if(['laser_gate','electric','barrier','fire_pillar_top','fire_pillar_bot'].includes(this.type)){
       return (this.t % this.cycle) < this.activeT;
     }
     return true;
@@ -526,6 +575,39 @@ class Obstacle{
         ctx.closePath(); ctx.fill();
         break;
       }
+      case 'fire_pillar_top':
+      case 'fire_pillar_bot':{
+        const on=this.isActive();
+        const fromTop = this.type==='fire_pillar_top';
+        const baseY = fromTop ? 0 : H;
+        // 喷射器底座
+        ctx.fillStyle='#5a2a1a';
+        ctx.fillRect(sx-this.w/2-4, baseY-(fromTop?-14:H+14?0:0), this.w+8, 14);
+        ctx.fillStyle='#7a3a1a';
+        if(fromTop) ctx.fillRect(sx-this.w/2-4, 0, this.w+8, 14);
+        else ctx.fillRect(sx-this.w/2-4, H-14, this.w+8, 14);
+        if(on){
+          const y0 = fromTop ? 14 : H-this.h;
+          const flick = 0.7+Math.sin(this.t*30)*0.3;
+          ctx.shadowBlur=20; ctx.shadowColor='#ff5a1a';
+          const g=ctx.createLinearGradient(0,y0,0,y0+this.h);
+          if(fromTop){
+            g.addColorStop(0,'rgba(255,210,77,'+flick+')'); g.addColorStop(0.4,'#ff9a3c'); g.addColorStop(1,'rgba(255,58,26,0.2)');
+          } else {
+            g.addColorStop(0,'rgba(255,58,26,0.2)'); g.addColorStop(0.6,'#ff9a3c'); g.addColorStop(1,'rgba(255,210,77,'+flick+')');
+          }
+          ctx.fillStyle=g;
+          ctx.fillRect(sx-this.w/2, y0, this.w, this.h);
+          // 火星
+          ctx.shadowBlur=0;
+          ctx.fillStyle='#ffd24d';
+          for(let i=0;i<5;i++){
+            const fy = fromTop ? rand(y0,y0+this.h) : rand(y0,y0+this.h);
+            ctx.fillRect(sx+rand(-this.w/2,this.w/2), fy, 2, 2);
+          }
+        }
+        break;
+      }
     }
     ctx.restore();
   }
@@ -538,7 +620,7 @@ class ObstacleSpawner{
     this.spawned=false;
     // 每隔 distance 生成一个障碍物
     this.interval = 700;
-    this.nextDist = 900;
+    this.nextDist = 450;
   }
   update(dt){
     if(this.game.scrollDistance >= this.nextDist && this.game.scrollDistance < this.game.level.length - 600){
@@ -552,11 +634,13 @@ class ObstacleSpawner{
       asteroid: ['rock_wall','laser_gate'],
       fortress: ['moving_wall','electric'],
       core: ['barrier','spike'],
+      fire: ['fire_pillar_top','fire_pillar_bot'],
     }[this.type];
     const t = choice(types);
     let y = rand(80, H-80);
     if(t==='rock_wall') y = H/2;
     if(t==='spike') y = choice([rand(40,80), rand(H-80,H-40), H/2]);
+    if(t==='fire_pillar_top'||t==='fire_pillar_bot') y = H/2;
     this.game.obstacles.push(new Obstacle(t, x, y, this.game));
   }
 }
@@ -610,7 +694,7 @@ const UPGRADES = [
   { key:'3', id:'spread', cost:3, name:'散弹',   desc:'5路扇形散射' },
   { key:'4', id:'laser',  cost:4, name:'激光',   desc:'穿透激光(与散弹互斥)' },
   { key:'5', id:'wingman',cost:5, name:'僚机',   desc:'增加1个僚机(最多3)' },
-  { key:'6', id:'shield', cost:6, name:'护盾',   desc:'刷新3次护盾抵挡' },
+  { key:'6', id:'shield', cost:6, name:'护盾',   desc:'2次护盾抵挡(黄色,不可叠加)' },
 ];
 
 class Player{
@@ -681,7 +765,13 @@ class Player{
       if(this.wingmen.length>=3){ this.game.toast('僚机已满 3/3'); this.crystals+=up.cost; return; }
       this.wingmen.push(new Wingman(this,this.wingmen.length));
     }
-    if(up.id==='shield') this.shieldHits=3;
+    if(up.id==='shield'){
+      if(this.shieldHits>0){ this.game.toast('护盾未消失，不可叠加'); this.crystals+=up.cost; return; }
+      this.shieldHits=2;
+      this.game.toast('护盾激活 2/2 (黄色,不可叠加)');
+      spawnExplosion(this.game.particles,this.x,this.y,'#ffd24d',20,1.2);
+      return;
+    }
     this.game.toast('解锁: '+up.name+' (-'+up.cost+'能量)');
     spawnExplosion(this.game.particles,this.x,this.y,COLORS.player,20,1.2);
   }
@@ -740,9 +830,9 @@ class Player{
     if(this.hasLaser){
       this.fireTimer=CFG.laserCooldown;
       const sp=CFG.bulletSpeed*1.4;
-      g.addBullet(new Bullet(sx,sy,sp,0,{w:6,h:22,dmg:2,color:COLORS.laser,friendly:true,laser:true,pierce:true}));
-      g.addBullet(new Bullet(sx,sy-12,sp,0,{w:5,h:18,dmg:2,color:COLORS.laser,friendly:true,laser:true,pierce:true}));
-      g.addBullet(new Bullet(sx,sy+12,sp,0,{w:5,h:18,dmg:2,color:COLORS.laser,friendly:true,laser:true,pierce:true}));
+      g.addBullet(new Bullet(sx,sy,sp,0,{w:6,h:22,dmg:1,color:COLORS.laser,friendly:true,laser:true,pierce:true}));
+      g.addBullet(new Bullet(sx,sy-12,sp,0,{w:5,h:18,dmg:1,color:COLORS.laser,friendly:true,laser:true,pierce:true}));
+      g.addBullet(new Bullet(sx,sy+12,sp,0,{w:5,h:18,dmg:1,color:COLORS.laser,friendly:true,laser:true,pierce:true}));
     } else if(this.hasCannon){
       this.fireTimer=CFG.fireCooldown;
       const sp=CFG.bulletSpeed;
@@ -760,7 +850,7 @@ class Player{
   fireMissiles(){
     const g=this.game;
     Audio2.missile();
-    const sp=CFG.missileSpeed + (this.missileLevel-1)*40; // 每级加速40
+    const sp=CFG.missileSpeed + (this.missileLevel-1)*60; // 每级加速60
     const count=this.missileLevel*2;                       // 每级2枚
     const target=g.findNearestEnemy(this.x+200,this.y);
     for(let i=0;i<count;i++){
@@ -778,6 +868,7 @@ class Player{
       Audio2.hit();
       spawnExplosion(this.game.particles,this.x,this.y,COLORS.player,10,0.8);
       if(this.shieldHits===0){ this.abilities.delete('shield'); this.game.toast('护盾耗尽'); }
+      else { this.game.toast('护盾抵挡 剩余 '+this.shieldHits+'/2'); }
       return true;
     }
     this.lives--;
@@ -828,10 +919,15 @@ class Player{
     for(const w of this.wingmen) w.draw(ctx,camX);
     if(this.shieldHits>0){
       ctx.save();
-      ctx.strokeStyle= this.shieldFlash>0 ? '#fff' : '#5dff9a';
+      ctx.strokeStyle= this.shieldFlash>0 ? '#fff' : '#ffd24d';
       ctx.globalAlpha=0.4+0.3*Math.sin(this.engineFlick)+(this.shieldFlash>0?0.3:0);
       ctx.lineWidth=2;
       ctx.beginPath(); ctx.arc(sx,this.y,30,0,Math.PI*2); ctx.stroke();
+      // 显示护盾剩余血量（小圆点）
+      ctx.fillStyle='#ffd24d';
+      for(let i=0;i<this.shieldHits;i++){
+        ctx.beginPath(); ctx.arc(sx-8+i*16, this.y-40, 3, 0, Math.PI*2); ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -865,6 +961,11 @@ class Enemy{
       case 'seeker':     this.w=24;this.h=24;this.maxHp=3;this.score=220;this.vx=-90;this.vy=0;break;
       case 'splitter':   this.w=40;this.h=40;this.maxHp=6;this.score=300;this.vx=-55;this.vy=0;break; // 分裂体：死后分裂成2个小敌人
       case 'portal':     this.w=36;this.h=36;this.maxHp=8;this.score=400;this.vx=-40;this.vy=0;this.spawnTimer=2;this.baseY=this.y;break; // 传送门：周期生成小敌人
+      // 第四关·火海：4种火敌人
+      case 'fire_beast': this.w=40;this.h=32;this.maxHp=6;this.score=320;this.vx=-70;this.vy=0;this.baseY=this.y;break; // 火兽：之字俯冲
+      case 'fire_snake': this.w=34;this.h=34;this.maxHp=5;this.score=300;this.vx=-90;this.vy=0;this.baseY=this.y;break; // 火蛇：蛇形弹幕
+      case 'fire_bird':  this.w=30;this.h=24;this.maxHp=3;this.score=260;this.vx=-140;this.vy=rand(-30,30);break; // 火鸟：高速冲刺
+      case 'fire_ball':  this.w=28;this.h=28;this.maxHp=4;this.score=240;this.vx=-60;this.vy=0;this.baseY=this.y;break; // 火球：直线追踪弹
     }
   }
   genRock(){
@@ -919,6 +1020,29 @@ class Enemy{
         const dy=this.game.player.y-this.y;
         this.y += clamp(dy,-80,80)*dt;
         break;
+      case 'fire_beast':
+        this.x+=this.vx*dt;
+        this.y=this.baseY+Math.sin(this.t*3)*70;
+        this.fireTimer-=dt;
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.1; this.shootAtPlayer(); }
+        break;
+      case 'fire_snake':
+        this.x+=this.vx*dt;
+        this.y=this.baseY+Math.sin(this.t*4+this.x*0.03)*45;
+        this.fireTimer-=dt;
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=0.8; this.shootFan(4,0.3); }
+        break;
+      case 'fire_bird':
+        this.x+=this.vx*dt; this.y+=this.vy*dt;
+        if(this.y<20||this.y>H-20) this.vy*=-1;
+        break;
+      case 'fire_ball':
+        this.x+=this.vx*dt;
+        const dyb=this.game.player.y-this.y;
+        this.y += clamp(dyb,-60,60)*dt;
+        this.fireTimer-=dt;
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.5; this.shootAtPlayer(); }
+        break;
     }
     if(this.x<this.game.camX-80) this.dead=true;
   }
@@ -955,7 +1079,8 @@ class Enemy{
   color(){
     return {asteroid_s:'#7a5a3a',asteroid_m:'#7a5a3a',asteroid_l:'#7a5a3a',miner:'#ff8a3c',
             turret:'#9a6dff',drone_swarm:'#a06aff',laser_node:'#6a9aff',
-            core_cell:'#ff3a6d',defender:'#ff5d7a',seeker:'#ffaa3c'}[this.type]||COLORS.enemy;
+            core_cell:'#ff3a6d',defender:'#ff5d7a',seeker:'#ffaa3c',
+            fire_beast:'#ff5a1a',fire_snake:'#ff9a3c',fire_bird:'#ffd24d',fire_ball:'#ff3a1a'}[this.type]||COLORS.enemy;
   }
   draw(ctx,camX){
     const sx=this.x-camX;
@@ -1012,6 +1137,35 @@ class Enemy{
         ctx.beginPath(); ctx.moveTo(-12,-8); ctx.lineTo(12,0); ctx.lineTo(-12,8);
         ctx.closePath(); ctx.fill();
         ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(4,0,2,0,Math.PI*2); ctx.fill(); break;
+      case 'fire_beast':
+        ctx.fillStyle=main;
+        ctx.beginPath(); ctx.moveTo(-18,-12); ctx.lineTo(14,-8); ctx.lineTo(20,0); ctx.lineTo(14,8); ctx.lineTo(-18,12); ctx.lineTo(-10,0);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#ffd24d'; ctx.beginPath(); ctx.arc(6,0,4,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#ff3a1a'; ctx.fillRect(-16,-3,5,6); break;
+      case 'fire_snake':
+        ctx.rotate(Math.sin(this.t*4)*0.3);
+        ctx.fillStyle=main;
+        ctx.beginPath(); ctx.moveTo(-16,0);
+        for(let i=-16;i<=16;i+=4){ ctx.lineTo(i, Math.sin((i+this.t*40)*0.3)*6); }
+        ctx.lineTo(16,4); for(let i=16;i>=-16;i-=4){ ctx.lineTo(i, Math.sin((i+this.t*40)*0.3)*6+8); }
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#ff3a1a'; ctx.beginPath(); ctx.arc(14,0,3,0,Math.PI*2); ctx.fill(); break;
+      case 'fire_bird':
+        ctx.fillStyle=main;
+        ctx.beginPath(); ctx.moveTo(-14,0); ctx.lineTo(0,-10); ctx.lineTo(14,0); ctx.lineTo(0,10);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#ff5a1a'; ctx.beginPath();
+        ctx.moveTo(-6,-2); ctx.lineTo(-14,-8); ctx.lineTo(-8,-2); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-6,2); ctx.lineTo(-14,8); ctx.lineTo(-8,2); ctx.closePath(); ctx.fill(); break;
+      case 'fire_ball':
+        const fbPulse=1+Math.sin(this.t*6)*0.15;
+        ctx.scale(fbPulse,fbPulse);
+        const fbg=ctx.createRadialGradient(0,0,0,0,0,14);
+        fbg.addColorStop(0,'#ffd24d'); fbg.addColorStop(0.6,'#ff5a1a'); fbg.addColorStop(1,'#ff3a1a');
+        ctx.fillStyle=fbg;
+        ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fff8d0'; ctx.beginPath(); ctx.arc(-3,-3,3,0,Math.PI*2); ctx.fill(); break;
     }
     ctx.shadowBlur=0;
     ctx.restore();
@@ -1025,14 +1179,15 @@ class Boss{
     this.x=game.camX + W + 140; this.y=H/2;
     this.entered=false; this.dead=false;
     this.fireTimer=1.5; this.t=0; this.hitFlash=0;
-    const hpMap={1:140,2:200,3:280};
+    const hpMap={1:140,2:200,3:280,4:360};
     this.maxHp=hpMap[type]||140;
     this.hp=this.maxHp;
     this.phase=1; this.dirY=1; this.alarmPlayed=false;
     this.w=220; this.h=140;
     if(type===1){ this.w=200; this.h=160; }
     else if(type===2){ this.w=220; this.h=140; }
-    else { this.w=240; this.h=160; }
+    else if(type===3){ this.w=240; this.h=160; }
+    else { this.w=260; this.h=150; }
     this._rockPts=null;
   }
   coreBounds(){ return {x:this.x-24,y:this.y-24,w:48,h:48}; }
@@ -1063,15 +1218,22 @@ class Boss{
         if(this.phase===1){ this.fireTimer=1.0; this.fireAimed(2,0.1); }
         else if(this.phase===2){ this.fireTimer=0.85; this.fireAimed(2,0.1); this.fireFan(6,0.35); }
         else { this.fireTimer=0.7; this.fireSpiral(6); this.fireAimed(2,0.1); }
-      } else {
+      } else if(this.type===3){
         if(this.phase===1){ this.fireTimer=0.8; this.fireSpiral(8); }
         else if(this.phase===2){ this.fireTimer=0.7; this.fireSpiral(10); this.fireAimed(2,0.12); }
         else { this.fireTimer=0.55; this.fireSpiral(12); this.fireAimed(3,0.1); if(Math.random()<0.4) this.fireFan(5,0.4); }
+      } else { // type 4 火龙：火球+扇形
+        if(this.phase===1){ this.fireTimer=1.0; this.fireFan(5,0.35); this.summonFireBall(); }
+        else if(this.phase===2){ this.fireTimer=0.8; this.fireFan(7,0.4); this.fireAimed(2,0.1); this.summonFireBall(); }
+        else { this.fireTimer=0.6; this.fireSpiral(8); this.fireFan(6,0.45); this.summonFireBall(); }
       }
     }
   }
   summonAsteroid(){
     this.game.enemies.push(new Enemy('asteroid_s', this.x-rand(20,80), this.y+rand(-60,60), this.game));
+  }
+  summonFireBall(){
+    this.game.enemies.push(new Enemy('fire_ball', this.x-rand(20,80), this.y+rand(-60,60), this.game));
   }
   fireAimed(n,spread){
     const p=this.game.player;
@@ -1119,7 +1281,12 @@ class Boss{
     for(let i=0;i<3;i++) this.game.spawnCrystal(this.x+rand(-40,40),this.y+rand(-40,40));
     this.game.spawnLifeDrop(this.x, this.y);
   }
-  bossColor(){ return this.type===1?COLORS.boss1:(this.type===2?COLORS.boss2:COLORS.boss3); }
+  bossColor(){
+    if(this.type===1) return COLORS.boss1;
+    if(this.type===2) return COLORS.boss2;
+    if(this.type===3) return COLORS.boss3;
+    return COLORS.boss4;
+  }
   draw(ctx,camX){
     const sx=this.x-camX;
     ctx.save();
@@ -1152,7 +1319,7 @@ class Boss{
       ctx.shadowBlur=20; ctx.shadowColor='#fff';
       ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,0,16*pulse,0,Math.PI*2); ctx.fill();
       ctx.fillStyle=this.bossColor(); ctx.beginPath(); ctx.arc(0,0,9*pulse,0,Math.PI*2); ctx.fill();
-    } else {
+    } else if(this.type===3){
       ctx.rotate(this.t*0.5);
       ctx.fillStyle=flash?'#fff':this.bossColor();
       ctx.beginPath();
@@ -1164,6 +1331,37 @@ class Boss{
       ctx.shadowBlur=25; ctx.shadowColor='#fff';
       ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,0,22*pulse,0,Math.PI*2); ctx.fill();
       ctx.fillStyle=this.bossColor(); ctx.beginPath(); ctx.arc(0,0,14*pulse,0,Math.PI*2); ctx.fill();
+    } else { // type 4 火龙
+      ctx.fillStyle=flash?'#fff':this.bossColor();
+      // 龙身：长蛇形
+      ctx.beginPath();
+      ctx.moveTo(110,0);
+      for(let i=0;i<6;i++){ const x=100-i*30; const y=Math.sin(this.t*3+i*0.8)*30; ctx.lineTo(x,y-22); }
+      for(let i=5;i>=0;i--){ const x=100-i*30; const y=Math.sin(this.t*3+i*0.8)*30; ctx.lineTo(x,y+22); }
+      ctx.closePath(); ctx.fill();
+      // 翅膀
+      ctx.fillStyle='#9a2a0a';
+      const wing=Math.sin(this.t*6)*10;
+      ctx.beginPath(); ctx.moveTo(20,-20); ctx.lineTo(40,-60-wing); ctx.lineTo(60,-20); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(20,20); ctx.lineTo(40,60+wing); ctx.lineTo(60,20); ctx.closePath(); ctx.fill();
+      // 龙头
+      ctx.fillStyle=flash?'#fff':'#ff5a1a';
+      ctx.beginPath(); ctx.moveTo(110,0); ctx.lineTo(70,-26); ctx.lineTo(60,-10); ctx.lineTo(50,0); ctx.lineTo(60,10); ctx.lineTo(70,26);
+      ctx.closePath(); ctx.fill();
+      // 眼睛
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(85,-8,4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#ff0'; ctx.beginPath(); ctx.arc(85,-8,2,0,Math.PI*2); ctx.fill();
+      // 核心
+      const pulse=1+Math.sin(this.t*8)*0.3;
+      ctx.shadowBlur=25; ctx.shadowColor='#fff';
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(20,0,16*pulse,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=this.bossColor(); ctx.beginPath(); ctx.arc(20,0,10*pulse,0,Math.PI*2); ctx.fill();
+      // 喷火
+      if(this.phase>=2){
+        ctx.shadowBlur=15; ctx.shadowColor='#ff5a1a';
+        ctx.fillStyle='rgba(255,90,26,'+(0.4+Math.sin(this.t*10)*0.2)+')';
+        ctx.beginPath(); ctx.moveTo(110,0); ctx.lineTo(150,-8); ctx.lineTo(160,0); ctx.lineTo(150,8); ctx.closePath(); ctx.fill();
+      }
     }
     ctx.shadowBlur=0;
     ctx.restore();
@@ -1198,11 +1396,20 @@ const WAVE_TEMPLATES = {
     ()=>[{t:'seeker',oy:0},{t:'core_cell',oy:-120},{t:'core_cell',oy:120}],
     ()=>[{t:'defender',oy:-60},{t:'defender',oy:60}],
   ],
+  4: [
+    ()=>[{t:'fire_bird',oy:rand(-100,100)}],
+    ()=>[{t:'fire_ball',oy:rand(-80,80)}],
+    ()=>[{t:'fire_beast',oy:-80},{t:'fire_beast',oy:80}],
+    ()=>[{t:'fire_snake',oy:rand(-100,100)}],
+    ()=>[{t:'fire_bird',oy:-120},{t:'fire_ball',oy:0},{t:'fire_bird',oy:120}],
+    ()=>[{t:'fire_beast',oy:-60},{t:'fire_snake',oy:60}],
+    ()=>[{t:'fire_snake',oy:-100},{t:'fire_snake',oy:0},{t:'fire_snake',oy:100}],
+  ],
 };
 class Spawner{
   constructor(game,interval,waveList){
     this.game=game; this.interval=interval; this.waveList=waveList;
-    this.timer=0.6;
+    this.timer=0.2;
   }
   update(dt){
     this.timer-=dt;
@@ -1224,6 +1431,7 @@ const LEVELS=[
   { name:'第一关 · 陨石地带', theme:'asteroid', length:3200, scrollSpeed:95, spawnInterval:1.3, hpScale:1.0, bossType:1, obstacleType:'asteroid' },
   { name:'第二关 · 堡垒内部', theme:'fortress', length:3600, scrollSpeed:105, spawnInterval:1.1, hpScale:1.4, bossType:2, obstacleType:'fortress' },
   { name:'第三关 · 堡垒核心', theme:'core',     length:4000, scrollSpeed:115, spawnInterval:0.95, hpScale:1.9, bossType:3, obstacleType:'core' },
+  { name:'第四关 · 火海',     theme:'fire',     length:4400, scrollSpeed:125, spawnInterval:0.9,  hpScale:2.4, bossType:4, obstacleType:'fire' },
 ];
 
 /* ------------------------------ 主游戏 ------------------------------ */
@@ -1531,7 +1739,7 @@ class Game{
       CTX.fillStyle = maxed ? '#5dff9a' : (owned ? '#5dff9a' : '#cfe');
       let label = up.name + levelText;
       if(up.id==='wingman') label += ' '+this.player.wingmen.length+'/3';
-      if(up.id==='shield') label += ' '+this.player.shieldHits+'/3';
+      if(up.id==='shield') label += ' '+this.player.shieldHits+'/2';
       CTX.fillText(label, px+24, py);
       // 消耗
       CTX.fillStyle = maxed ? '#5dff9a' : (owned ? '#5dff9a' : (enough ? COLORS.crystal : '#933'));
