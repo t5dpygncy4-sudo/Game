@@ -1179,7 +1179,7 @@ class Boss{
     this.x=game.camX + W + 140; this.y=H/2;
     this.entered=false; this.dead=false;
     this.fireTimer=1.5; this.t=0; this.hitFlash=0;
-    const hpMap={1:140,2:200,3:280,4:180}; // boss4 血量减半
+    const hpMap={1:140,2:200,3:280,4:500}; // boss4 血量500
     this.maxHp=hpMap[type]||140;
     this.hp=this.maxHp;
     this.phase=1; this.dirY=1; this.alarmPlayed=false;
