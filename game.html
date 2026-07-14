@@ -962,10 +962,10 @@ class Enemy{
       case 'splitter':   this.w=40;this.h=40;this.maxHp=6;this.score=300;this.vx=-55;this.vy=0;break; // 分裂体：死后分裂成2个小敌人
       case 'portal':     this.w=36;this.h=36;this.maxHp=8;this.score=400;this.vx=-40;this.vy=0;this.spawnTimer=2;this.baseY=this.y;break; // 传送门：周期生成小敌人
       // 第四关·火海：4种火敌人
-      case 'fire_beast': this.w=40;this.h=32;this.maxHp=6;this.score=320;this.vx=-70;this.vy=0;this.baseY=this.y;break; // 火兽：之字俯冲
-      case 'fire_snake': this.w=34;this.h=34;this.maxHp=5;this.score=300;this.vx=-90;this.vy=0;this.baseY=this.y;break; // 火蛇：蛇形弹幕
-      case 'fire_bird':  this.w=30;this.h=24;this.maxHp=3;this.score=260;this.vx=-140;this.vy=rand(-30,30);break; // 火鸟：高速冲刺
-      case 'fire_ball':  this.w=28;this.h=28;this.maxHp=4;this.score=240;this.vx=-60;this.vy=0;this.baseY=this.y;break; // 火球：直线追踪弹
+      case 'fire_beast': this.w=40;this.h=32;this.maxHp=3;this.score=320;this.vx=-70;this.vy=0;this.baseY=this.y;break; // 火兽：之字俯冲（血量减半）
+      case 'fire_snake': this.w=34;this.h=34;this.maxHp=2;this.score=300;this.vx=-90;this.vy=0;this.baseY=this.y;break; // 火蛇：蛇形弹幕（血量减半）
+      case 'fire_bird':  this.w=30;this.h=24;this.maxHp=1;this.score=260;this.vx=-140;this.vy=rand(-30,30);break; // 火鸟：高速冲刺（血量减半）
+      case 'fire_ball':  this.w=28;this.h=28;this.maxHp=2;this.score=240;this.vx=-60;this.vy=0;this.baseY=this.y;break; // 火球：直线追踪弹（血量减半）
     }
   }
   genRock(){
@@ -1179,7 +1179,7 @@ class Boss{
     this.x=game.camX + W + 140; this.y=H/2;
     this.entered=false; this.dead=false;
     this.fireTimer=1.5; this.t=0; this.hitFlash=0;
-    const hpMap={1:140,2:200,3:280,4:360};
+    const hpMap={1:140,2:200,3:280,4:180}; // boss4 血量减半
     this.maxHp=hpMap[type]||140;
     this.hp=this.maxHp;
     this.phase=1; this.dirY=1; this.alarmPlayed=false;
