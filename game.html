@@ -1024,13 +1024,13 @@ class Enemy{
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*3)*70;
         this.fireTimer-=dt;
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.1; this.shootAtPlayer(); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=2.2; this.shootAtPlayer(); }
         break;
       case 'fire_snake':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*4+this.x*0.03)*45;
         this.fireTimer-=dt;
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=0.8; this.shootFan(4,0.3); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.6; this.shootFan(4,0.3); }
         break;
       case 'fire_bird':
         this.x+=this.vx*dt; this.y+=this.vy*dt;
@@ -1041,7 +1041,7 @@ class Enemy{
         const dyb=this.game.player.y-this.y;
         this.y += clamp(dyb,-60,60)*dt;
         this.fireTimer-=dt;
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.5; this.shootAtPlayer(); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=3.0; this.shootAtPlayer(); }
         break;
     }
     if(this.x<this.game.camX-80) this.dead=true;
@@ -1222,10 +1222,10 @@ class Boss{
         if(this.phase===1){ this.fireTimer=0.8; this.fireSpiral(8); }
         else if(this.phase===2){ this.fireTimer=0.7; this.fireSpiral(10); this.fireAimed(2,0.12); }
         else { this.fireTimer=0.55; this.fireSpiral(12); this.fireAimed(3,0.1); if(Math.random()<0.4) this.fireFan(5,0.4); }
-      } else { // type 4 火龙：火球+扇形
-        if(this.phase===1){ this.fireTimer=1.0; this.fireFan(5,0.35); this.summonFireBall(); }
-        else if(this.phase===2){ this.fireTimer=0.8; this.fireFan(7,0.4); this.fireAimed(2,0.1); this.summonFireBall(); }
-        else { this.fireTimer=0.6; this.fireSpiral(8); this.fireFan(6,0.45); this.summonFireBall(); }
+      } else { // type 4 火龙：火球+扇形（发射频率降低50%）
+        if(this.phase===1){ this.fireTimer=2.0; this.fireFan(5,0.35); this.summonFireBall(); }
+        else if(this.phase===2){ this.fireTimer=1.6; this.fireFan(7,0.4); this.fireAimed(2,0.1); this.summonFireBall(); }
+        else { this.fireTimer=1.2; this.fireSpiral(8); this.fireFan(6,0.45); this.summonFireBall(); }
       }
     }
   }
@@ -1431,7 +1431,7 @@ const LEVELS=[
   { name:'第一关 · 陨石地带', theme:'asteroid', length:3200, scrollSpeed:95, spawnInterval:1.3, hpScale:1.0, bossType:1, obstacleType:'asteroid' },
   { name:'第二关 · 堡垒内部', theme:'fortress', length:3600, scrollSpeed:105, spawnInterval:1.1, hpScale:1.4, bossType:2, obstacleType:'fortress' },
   { name:'第三关 · 堡垒核心', theme:'core',     length:4000, scrollSpeed:115, spawnInterval:0.95, hpScale:1.9, bossType:3, obstacleType:'core' },
-  { name:'第四关 · 火海',     theme:'fire',     length:4400, scrollSpeed:125, spawnInterval:0.9,  hpScale:2.4, bossType:4, obstacleType:'fire' },
+  { name:'第四关 · 火海',     theme:'fire',     length:4400, scrollSpeed:125, spawnInterval:0.9,  hpScale:1.2, bossType:4, obstacleType:'fire' },
 ];
 
 /* ------------------------------ 主游戏 ------------------------------ */
@@ -1501,7 +1501,11 @@ class Game{
       return;
     }
     if(this.state==='GAME_OVER'||this.state==='WIN'){
-      if(Input.justPressed('enter')){ this.reset(); this.state='PLAYING'; }
+      if(Input.justPressed('enter')){
+        this.reset();
+        this.state='TITLE';
+        this.titleSelected=0;
+      }
       return;
     }
     if(Input.justPressed('p','escape')){ this.state = this.state==='PAUSED'?'PLAYING':'PAUSED'; }
@@ -1898,7 +1902,7 @@ class Game{
     CTX.fillText('得分  '+this.score, W/2, H/2+20);
     CTX.fillText('击破  '+this.kills, W/2, H/2+54);
     CTX.fillStyle='#ffd24d'; CTX.font='18px monospace';
-    if(Math.floor(performance.now()/500)%2===0) CTX.fillText('按 回车 重新开始', W/2, H-40);
+    if(Math.floor(performance.now()/500)%2===0) CTX.fillText('按 回车 回到选关画面', W/2, H-40);
     CTX.restore();
   }
   drawWin(){
@@ -1916,7 +1920,7 @@ class Game{
     CTX.fillText('最终得分  '+this.score, W/2, H/2+44);
     CTX.fillText('击破数    '+this.kills, W/2, H/2+76);
     CTX.fillStyle='#ffd24d'; CTX.font='18px monospace';
-    if(Math.floor(performance.now()/500)%2===0) CTX.fillText('按 回车 再来一次', W/2, H-40);
+    if(Math.floor(performance.now()/500)%2===0) CTX.fillText('按 回车 回到选关画面', W/2, H-40);
     CTX.restore();
   }
 }
