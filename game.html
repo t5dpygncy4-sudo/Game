@@ -61,9 +61,11 @@ const COLORS = {
   player: '#5ef7ff', playerCore:'#fff', playerEngine:'#ff9a3c', playerWing:'#2bb6cc',
   bullet:'#bffcff', laser:'#ff4d8d', missile:'#ffd24d',
   enemy:'#ff5d7a', enemyBullet:'#ff9a3c',
+  corrosive:'#7aff3a',           // 第5关腐蚀液：毒绿
   crystal:'#ffd24d',
   obstacle:'#8a6a4a', obstacleActive:'#ff4d6d',
   boss1:'#b07a3a', boss2:'#9a4dff', boss3:'#ff3a6d', boss4:'#ff3a1a',
+  boss5:'#d0d0e0',                // 第5关骷髅 Boss：苍白骨色
 };
 
 /* ------------------------------ 输入 ------------------------------ */
@@ -195,6 +197,14 @@ class Starfield{
       for(let i=0;i<40;i++) embers.push({x:rand(0,W),y:rand(0,H),r:rand(1,3),sp:rand(60,160),vy:rand(-30,-10)});
       return {embers};
     }
+    if(t==='tomb'){
+      // β星人墓穴：墓碑 + 飘动绿幽魂 + 拱门
+      const tombs=[];
+      for(let i=0;i<8;i++) tombs.push({x:rand(0,W*2),y:rand(60,H-60),w:rand(30,60),h:rand(40,80),sp:rand(15,40)});
+      const wisps=[];
+      for(let i=0;i<18;i++) wisps.push({x:rand(0,W),y:rand(0,H),r:rand(20,50),sp:rand(20,50),phase:rand(0,Math.PI*2),vy:rand(-8,-2)});
+      return {tombs,wisps};
+    }
     const neb=[];
     for(let i=0;i<5;i++) neb.push({x:rand(0,W*2),y:rand(0,H),r:rand(120,260),c:choice(['#3a1a5a','#1a3a5a','#5a1a3a']),sp:rand(8,22)});
     return {nebula:neb};
@@ -219,12 +229,23 @@ class Starfield{
         if(e.y<0){ e.y=H; }
       }
     }
+    if(this.themeObj.tombs){
+      for(const tb of this.themeObj.tombs){ tb.x-=tb.sp*dt; if(tb.x<-tb.w){ tb.x=W+tb.w; tb.y=rand(60,H-60); tb.w=rand(30,60); tb.h=rand(40,80); } }
+    }
+    if(this.themeObj.wisps){
+      for(const w of this.themeObj.wisps){
+        w.x-=w.sp*dt; w.y+=w.vy*dt; w.phase+=dt*2;
+        if(w.x<-w.r){ w.x=W+w.r; w.y=rand(0,H); }
+        if(w.y<-w.r){ w.y=H+w.r; }
+      }
+    }
   }
   draw(ctx){
     const g=ctx.createLinearGradient(0,0,0,H);
     if(this.theme==='fortress'){ g.addColorStop(0,'#0a0a14'); g.addColorStop(1,'#140a1a'); }
     else if(this.theme==='core'){ g.addColorStop(0,'#0a0510'); g.addColorStop(0.5,'#1a0820'); g.addColorStop(1,'#050208'); }
     else if(this.theme==='fire'){ g.addColorStop(0,'#1a0500'); g.addColorStop(0.5,'#2a0a04'); g.addColorStop(1,'#0a0202'); }
+    else if(this.theme==='tomb'){ g.addColorStop(0,'#050a08'); g.addColorStop(0.5,'#0a1410'); g.addColorStop(1,'#020804'); }
     else { g.addColorStop(0,'#05060f'); g.addColorStop(0.5,'#08081a'); g.addColorStop(1,'#04050c'); }
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
     if(this.themeObj.nebula){
@@ -251,6 +272,35 @@ class Starfield{
         ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill();
       }
       ctx.shadowBlur=0;
+    }
+    if(this.themeObj.tombs){
+      // 远景墓碑（带阴影渐变）
+      for(const tb of this.themeObj.tombs){
+        const x=((tb.x%W)+W)%W;
+        const tg=ctx.createLinearGradient(0,tb.y,0,tb.y+tb.h);
+        tg.addColorStop(0,'#3a3a4a'); tg.addColorStop(1,'#1a1a26');
+        ctx.fillStyle=tg;
+        ctx.beginPath();
+        ctx.moveTo(x,tb.y+tb.h); ctx.lineTo(x,tb.y+tb.h*0.3);
+        ctx.quadraticCurveTo(x,tb.y,x+tb.w/2,tb.y);
+        ctx.quadraticCurveTo(x+tb.w,tb.y,x+tb.w,tb.y+tb.h*0.3);
+        ctx.lineTo(x+tb.w,tb.y+tb.h);
+        ctx.closePath(); ctx.fill();
+        // 墓碑十字
+        ctx.fillStyle='#5a5a6a';
+        ctx.fillRect(x+tb.w/2-2,tb.y+tb.h*0.2,4,tb.h*0.4);
+        ctx.fillRect(x+tb.w/2-6,tb.y+tb.h*0.28,12,4);
+      }
+    }
+    if(this.themeObj.wisps){
+      // 飘动的绿幽魂（呼吸透明度）
+      for(const w of this.themeObj.wisps){
+        const a=0.2+Math.sin(w.phase)*0.15;
+        const rg=ctx.createRadialGradient(w.x,w.y,0,w.x,w.y,w.r);
+        rg.addColorStop(0,'rgba(122,255,58,'+a+')'); rg.addColorStop(1,'rgba(60,140,30,0)');
+        ctx.fillStyle=rg;
+        ctx.beginPath(); ctx.arc(w.x,w.y,w.r,0,Math.PI*2); ctx.fill();
+      }
     }
     // 星点：远景暗淡 + 近景亮星带十字光
     const twinkle=0.7+Math.sin(this.t*3)*0.3;
@@ -293,12 +343,14 @@ class Bullet{
     this.pierce=opts.pierce||false;
     this.laser=opts.laser||false;
     this.missile=opts.missile||false;
+    this.corrosive=opts.corrosive||false;   // 腐蚀液：受重力下沉
     this.target=opts.target||null;
     this.hits=new Set();
     this.dead=false;
     // 敌方子弹默认给足寿命：让屏幕边界负责回收，避免远距离弹道半途消失
     this.life=opts.life!==undefined?opts.life:(opts.friendly!==false?3:8);
     this.angle=opts.angle||0;
+    this._drip=Math.random()*Math.PI*2;  // 腐蚀液滴落动画相位
   }
   update(dt, game){
     if(this.missile && this.target && !this.target.dead){
@@ -312,6 +364,9 @@ class Bullet{
       this.target=game.findNearestEnemy(this.x,this.y);
     }
     this.x+=this.vx*dt; this.y+=this.vy*dt;
+    // 腐蚀液：受重力下沉，呈现抛物线轨迹
+    if(this.corrosive){ this.vy += 180*dt; }
+    this._drip += dt*8;
     this.life-=dt;
     if(this.life<=0) this.dead=true;
   }
@@ -355,6 +410,29 @@ class Bullet{
       ctx.fillStyle=this.color;
       ctx.shadowBlur=8; ctx.shadowColor=this.color;
       ctx.fillRect(sx-this.w/2,this.y-this.h/2,this.w,this.h);
+    } else if(this.corrosive){
+      // 腐蚀液：绿色粘稠液滴 + 下垂尾迹 + 冒泡
+      ctx.shadowBlur=10; ctx.shadowColor=COLORS.corrosive;
+      const wob = Math.sin(this._drip)*1.2;
+      // 拖尾液滴
+      ctx.fillStyle='rgba(122,255,58,0.4)';
+      ctx.beginPath(); ctx.arc(sx-this.vx*0.04, this.y-this.vy*0.04-2, this.w*0.55, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx-this.vx*0.08, this.y-this.vy*0.08-4, this.w*0.4, 0, Math.PI*2); ctx.fill();
+      // 主液团（拉长椭圆 + 抖动）
+      ctx.save();
+      ctx.translate(sx, this.y);
+      ctx.rotate(Math.atan2(this.vy, this.vx));
+      const lg=ctx.createLinearGradient(-this.w, 0, this.w, 0);
+      lg.addColorStop(0,'#3a8a1a'); lg.addColorStop(0.5,COLORS.corrosive); lg.addColorStop(1,'#d0ff8a');
+      ctx.fillStyle=lg;
+      ctx.beginPath();
+      ctx.ellipse(0, wob*0.3, this.w*0.7, this.w*0.55, 0, 0, Math.PI*2);
+      ctx.fill();
+      // 高光气泡
+      ctx.shadowBlur=0;
+      ctx.fillStyle='rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.arc(-this.w*0.2, -this.w*0.15, this.w*0.18, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
     } else {
       // 敌弹：发光外晕 + 内核
       ctx.fillStyle=this.color;
@@ -678,6 +756,7 @@ class ObstacleSpawner{
       fortress: ['moving_wall','electric'],
       core: ['barrier','spike'],
       fire: ['fire_pillar_top','fire_pillar_bot'],
+      tomb: ['spike','barrier','moving_wall'],     // 墓穴：尖刺 + 能量屏障 + 移动墙
     }[this.type];
     const t = choice(types);
     let y = rand(80, H-80);
@@ -1190,6 +1269,11 @@ class Enemy{
       case 'fire_snake': this.w=34;this.h=34;this.maxHp=2;this.score=300;this.vx=-90;this.vy=0;this.baseY=this.y;break; // 火蛇：蛇形弹幕（血量减半）
       case 'fire_bird':  this.w=30;this.h=24;this.maxHp=1;this.score=260;this.vx=-140;this.vy=rand(-30,30);break; // 火鸟：高速冲刺（血量减半）
       case 'fire_ball':  this.w=28;this.h=28;this.maxHp=2;this.score=240;this.vx=-60;this.vy=0;this.baseY=this.y;break; // 火球：直线追踪弹（血量减半）
+      // 第五关·β星人墓穴：变异外星人 + 偷袭者
+      case 'mutant_grunt': this.w=32;this.h=36;this.maxHp=3;this.score=280;this.vx=-65;this.vy=0;this.baseY=this.y;break; // 变异兵：喷腐蚀液
+      case 'mutant_brute': this.w=44;this.h=48;this.maxHp=8;this.score=450;this.vx=-50;this.vy=0;this.baseY=this.y;break; // 变异巨兽：腐蚀液扇形
+      case 'mutant_crawler': this.w=26;this.h=20;this.maxHp=2;this.score=200;this.vx=-95;this.vy=0;this.baseY=this.y;break; // 爬行变异体：群体出没
+      case 'ambusher': this.w=30;this.h=30;this.maxHp=4;this.score=380;this.vx=-30;this.vy=0;break; // 偷袭者：从上下方冲撞
     }
   }
   genRock(){
@@ -1267,8 +1351,65 @@ class Enemy{
         this.fireTimer-=dt;
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=3.0; this.shootAtPlayer(); }
         break;
+      case 'mutant_grunt':
+        this.x+=this.vx*dt;
+        this.y=this.baseY+Math.sin(this.t*2.2)*32;
+        this.fireTimer-=dt;
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.8; this.shootCorrosive(); }
+        break;
+      case 'mutant_brute':
+        this.x+=this.vx*dt;
+        this.y=this.baseY+Math.sin(this.t*1.4)*22;
+        this.fireTimer-=dt;
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=2.4; this.shootCorrosiveFan(3,0.32); }
+        break;
+      case 'mutant_crawler':
+        this.x+=this.vx*dt;
+        this.y=this.baseY+Math.sin(this.t*6+this.x*0.04)*16;
+        break;
+      case 'ambusher': {
+        // 偷袭者：进场后警告 → 锁定玩家Y → 高速冲撞
+        if(this.ambushState===undefined){ this.ambushState=0; this.ambushTimer=0; }
+        this.ambushTimer+=dt;
+        if(this.ambushState===0){
+          // 警告阶段：缓慢左移，锁定玩家Y做准备
+          this.x+=this.vx*dt;
+          const tY=this.game.player.y;
+          this.y += clamp(tY-this.y,-40,40)*dt;
+          if(this.ambushTimer>0.9){ this.ambushState=1; this.ambushTimer=0; this.targetY=this.game.player.y; this.dashDir=(this.game.player.x<this.x?-1:1); }
+        } else if(this.ambushState===1){
+          // 冲撞阶段：朝玩家位置高速直冲
+          const dx=this.game.player.x-this.x;
+          const sp=380;
+          const m=Math.hypot(dx,this.targetY-this.y)||1;
+          this.x+=(dx/m)*sp*dt;
+          this.y+=((this.targetY-this.y)/m)*sp*dt;
+          if(this.ambushTimer>1.4){ this.ambushState=2; this.vx=-120; }
+        } else {
+          // 撤退阶段：直线左移退出
+          this.x+=this.vx*dt;
+        }
+        break;
+      }
     }
     if(this.x<this.game.camX-80) this.dead=true;
+  }
+  shootCorrosive(){
+    const p=this.game.player;
+    const dx=p.x-this.x, dy=p.y-this.y;
+    const m=Math.hypot(dx,dy)||1;
+    const sp=CFG.enemyBulletSpeed*0.9;
+    this.game.bullets.push(new Bullet(this.x,this.y,dx/m*sp,dy/m*sp,
+      {w:11,h:11,dmg:1,color:COLORS.corrosive,friendly:false,corrosive:true}));
+  }
+  shootCorrosiveFan(n,spread){
+    const sp=CFG.enemyBulletSpeed*0.85;
+    const base=Math.PI;
+    for(let i=0;i<n;i++){
+      const a=base+(i-(n-1)/2)*spread;
+      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:11,h:11,dmg:1,color:COLORS.corrosive,friendly:false,corrosive:true}));
+    }
   }
   shootAtPlayer(){
     const p=this.game.player;
@@ -1294,7 +1435,7 @@ class Enemy{
   die(){
     this.dead=true;
     this.game.score+=this.score; this.game.kills++;
-    const isBig = this.type==='asteroid_l'||this.type==='defender';
+    const isBig = this.type==='asteroid_l'||this.type==='defender'||this.type==='mutant_brute';
     spawnExplosion(this.game.particles,this.x,this.y,COLORS.enemy,isBig?22:12,isBig?1.4:1);
     if(isBig) Audio2.bigExplode(); else Audio2.explode();
     if(this.dropCrystal) this.game.spawnCrystal(this.x,this.y);
@@ -1304,7 +1445,8 @@ class Enemy{
     return {asteroid_s:'#7a5a3a',asteroid_m:'#7a5a3a',asteroid_l:'#7a5a3a',miner:'#ff8a3c',
             turret:'#9a6dff',drone_swarm:'#a06aff',laser_node:'#6a9aff',
             core_cell:'#ff3a6d',defender:'#ff5d7a',seeker:'#ffaa3c',
-            fire_beast:'#ff5a1a',fire_snake:'#ff9a3c',fire_bird:'#ffd24d',fire_ball:'#ff3a1a'}[this.type]||COLORS.enemy;
+            fire_beast:'#ff5a1a',fire_snake:'#ff9a3c',fire_bird:'#ffd24d',fire_ball:'#ff3a1a',
+            mutant_grunt:'#8ace3a',mutant_brute:'#5a8a2a',mutant_crawler:'#a0d050',ambusher:'#b03aff'}[this.type]||COLORS.enemy;
   }
   draw(ctx,camX){
     const sx=this.x-camX;
@@ -1312,84 +1454,514 @@ class Enemy{
     ctx.translate(sx,this.y);
     const flash=this.hitFlash>0;
     const main=flash?'#fff':this.color();
-    ctx.shadowBlur=8; ctx.shadowColor=main;
+    ctx.shadowBlur=10; ctx.shadowColor=main;
     switch(this.type){
       case 'asteroid_s': case 'asteroid_m': case 'asteroid_l':{
         ctx.rotate(this.ang);
         const r=this.w/2;
-        ctx.fillStyle=flash?'#fff':'#7a5a3a';
+        // 渐变岩石表面：左暗右亮（模拟光照）
+        const rg=ctx.createRadialGradient(-r*0.3,-r*0.3,r*0.1,0,0,r);
+        if(!flash){ rg.addColorStop(0,'#9a7a5a'); rg.addColorStop(0.6,'#6a4a2a'); rg.addColorStop(1,'#2a1a0a'); }
+        else { rg.addColorStop(0,'#fff'); rg.addColorStop(1,'#aaa'); }
+        ctx.fillStyle=rg;
         ctx.beginPath();
         this.shape.forEach((p,i)=>{ const x=p[0]*r,y=p[1]*r; i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle='#3a2a1a';
-        ctx.beginPath(); ctx.arc(-r*0.3,-r*0.2,r*0.25,0,Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(r*0.2,r*0.3,r*0.15,0,Math.PI*2); ctx.fill();
+        // 多个撞击坑（带阴影）
+        ctx.shadowBlur=0;
+        const craters=[[-r*0.3,-r*0.2,r*0.28],[r*0.22,r*0.3,r*0.18],[-r*0.1,r*0.35,r*0.12],[r*0.35,-r*0.25,r*0.1]];
+        for(const [cx,cy,cr] of craters){
+          ctx.fillStyle='#2a1a0a';
+          ctx.beginPath(); ctx.arc(cx,cy,cr,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='#5a4a3a';
+          ctx.beginPath(); ctx.arc(cx-cr*0.3,cy-cr*0.3,cr*0.6,0,Math.PI*2); ctx.fill();
+        }
+        // 右上高光（光照点）
+        ctx.fillStyle='rgba(255,230,200,0.4)';
+        ctx.beginPath(); ctx.arc(r*0.4,-r*0.4,r*0.18,0,Math.PI*2); ctx.fill();
         break;
       }
-      case 'miner':
-        ctx.fillStyle=main; ctx.fillRect(-12,-10,24,20);
-        ctx.fillStyle='#ffcc33'; ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle='#7a3a1a'; ctx.fillRect(8,-3,8,6); break;
-      case 'turret':
-        ctx.fillStyle=main; ctx.fillRect(-14,-12,28,24);
-        ctx.fillStyle='#5a3a8a'; ctx.fillRect(-16,-4,8,8);
-        ctx.fillStyle='#ffcc33'; ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.fill(); break;
-      case 'drone_swarm':
-        ctx.fillStyle=main;
-        ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(0,-8); ctx.lineTo(10,0); ctx.lineTo(0,8);
-        ctx.closePath(); ctx.fill(); break;
-      case 'laser_node':
-        ctx.fillStyle=main;
-        ctx.beginPath(); ctx.moveTo(0,-14); ctx.lineTo(14,0); ctx.lineTo(0,14); ctx.lineTo(-14,0);
+      case 'miner': {
+        // 采矿无人机：椭圆机身 + 舷窗 + 旋转钻头 + 支架
+        ctx.fillStyle=flash?'#fff':'#5a3a2a';
+        ctx.beginPath(); ctx.ellipse(0,0,14,11,0,0,Math.PI*2); ctx.fill();
+        // 金属高光
+        const mg=ctx.createLinearGradient(0,-11,0,11);
+        mg.addColorStop(0,'#8a5a3a'); mg.addColorStop(0.5,'#5a3a2a'); mg.addColorStop(1,'#2a1a0a');
+        ctx.fillStyle=flash?'#fff':mg;
+        ctx.beginPath(); ctx.ellipse(0,0,13,10,0,0,Math.PI*2); ctx.fill();
+        // 舷窗
+        ctx.shadowBlur=8; ctx.shadowColor='#ffcc33';
+        ctx.fillStyle=flash?'#fff':'#ffd24d';
+        ctx.beginPath(); ctx.arc(-2,0,4,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='rgba(255,255,255,0.7)';
+        ctx.beginPath(); ctx.arc(-3,-1,1.5,0,Math.PI*2); ctx.fill();
+        // 旋转钻头
+        ctx.save();
+        ctx.translate(11,0); ctx.rotate(this.t*12);
+        ctx.fillStyle='#aaa';
+        for(let i=0;i<3;i++){
+          ctx.rotate(Math.PI*2/3);
+          ctx.fillStyle=i===0?'#ddd':'#888';
+          ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(5,-2); ctx.lineTo(7,0); ctx.lineTo(5,2); ctx.closePath(); ctx.fill();
+        }
+        ctx.fillStyle='#444'; ctx.beginPath(); ctx.arc(0,0,2,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+        // 支架
+        ctx.fillStyle='#3a2a1a'; ctx.fillRect(-13,-13,4,5); ctx.fillRect(-13,8,4,5);
+        break;
+      }
+      case 'turret': {
+        // 炮台：底座 + 旋转炮管 + 双侧装甲 + 核心灯
+        // 底座
+        ctx.fillStyle=flash?'#fff':'#3a2a5a';
+        ctx.beginPath();
+        ctx.moveTo(-16,12); ctx.lineTo(-14,-8); ctx.lineTo(14,-8); ctx.lineTo(16,12);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle=this.charge%1<0.5?'#ff4d8d':'#4db4ff';
-        ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill(); break;
-      case 'core_cell':
-        ctx.fillStyle=main;
+        // 主体装甲（带渐变）
+        const tg=ctx.createLinearGradient(0,-12,0,12);
+        if(!flash){ tg.addColorStop(0,'#9a6dff'); tg.addColorStop(0.5,'#6a4dbf'); tg.addColorStop(1,'#3a2a5a'); }
+        else { tg.addColorStop(0,'#fff'); tg.addColorStop(1,'#ccc'); }
+        ctx.fillStyle=tg;
+        ctx.fillRect(-14,-10,28,16);
+        // 侧装甲块
+        ctx.fillStyle=flash?'#fff':'#5a3a8a';
+        ctx.fillRect(-18,-6,6,12); ctx.fillRect(12,-6,6,12);
+        // 炮管（朝向玩家方向）
+        ctx.save();
+        ctx.translate(0,2);
+        const p=this.game.player;
+        const ang=Math.atan2(p.y-this.y, p.x-this.x);
+        ctx.rotate(ang);
+        ctx.fillStyle=flash?'#fff':'#2a1a4a';
+        ctx.fillRect(0,-3,22,6);
+        ctx.fillStyle='#ffcc33';
+        ctx.fillRect(18,-4,4,8);
+        ctx.restore();
+        // 核心灯
+        ctx.shadowBlur=8; ctx.shadowColor='#ffcc33';
+        ctx.fillStyle=flash?'#fff':'#ffd24d';
+        ctx.beginPath(); ctx.arc(0,-2,4,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='rgba(255,255,255,0.8)';
+        ctx.beginPath(); ctx.arc(-1,-3,1.5,0,Math.PI*2); ctx.fill();
+        break;
+      }
+      case 'drone_swarm': {
+        // 无人机群：六边形机身 + 中央扫描眼 + 旋翼
+        ctx.fillStyle=flash?'#fff':'#7a4adf';
+        ctx.beginPath();
+        for(let i=0;i<6;i++){ const a=i/6*Math.PI*2; const r=9; const x=Math.cos(a)*r,y=Math.sin(a)*r; i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+        ctx.closePath(); ctx.fill();
+        // 装甲条
+        ctx.fillStyle=flash?'#fff':'#5a2abf';
+        ctx.fillRect(-7,-2,14,4);
+        // 旋翼（旋转）
+        ctx.shadowBlur=0;
+        ctx.strokeStyle='rgba(180,180,255,0.6)';
+        ctx.lineWidth=1.5;
+        const ra=this.t*30;
+        ctx.beginPath(); ctx.moveTo(-9,-9); ctx.lineTo(-9+Math.cos(ra)*4,-9+Math.sin(ra)*4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(9,-9); ctx.lineTo(9+Math.cos(ra+2)*4,-9+Math.sin(ra+2)*4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-9,9); ctx.lineTo(-9+Math.cos(ra+4)*4,9+Math.sin(ra+4)*4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(9,9); ctx.lineTo(9+Math.cos(ra+1)*4,9+Math.sin(ra+1)*4); ctx.stroke();
+        // 中央扫描眼
+        ctx.shadowBlur=6; ctx.shadowColor='#ff4d8d';
+        ctx.fillStyle=flash?'#fff':(Math.floor(this.t*4)%2?'#ff4d8d':'#4db4ff');
+        ctx.beginPath(); ctx.arc(0,0,3,0,Math.PI*2); ctx.fill();
+        break;
+      }
+      case 'laser_node': {
+        // 激光节点：菱形水晶 + 充能环 + 闪烁核心
+        ctx.fillStyle=flash?'#fff':'#4a7adf';
+        ctx.beginPath(); ctx.moveTo(0,-15); ctx.lineTo(15,0); ctx.lineTo(0,15); ctx.lineTo(-15,0);
+        ctx.closePath(); ctx.fill();
+        // 水晶切面渐变
+        const lg=ctx.createLinearGradient(-15,-15,15,15);
+        if(!flash){ lg.addColorStop(0,'#8aaeff'); lg.addColorStop(0.5,'#4a7adf'); lg.addColorStop(1,'#2a4a8a'); }
+        else { lg.addColorStop(0,'#fff'); lg.addColorStop(1,'#aaf'); }
+        ctx.fillStyle=lg;
+        ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(13,0); ctx.lineTo(0,13); ctx.lineTo(-13,0);
+        ctx.closePath(); ctx.fill();
+        // 充能环
+        ctx.shadowBlur=0;
+        ctx.strokeStyle='rgba(120,180,255,'+(0.4+Math.sin(this.t*8)*0.3)+')';
+        ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.arc(0,0,10+Math.sin(this.t*8)*2,0,Math.PI*2); ctx.stroke();
+        // 闪烁核心
+        const coreC=this.charge%1<0.5?'#ff4d8d':'#4db4ff';
+        ctx.shadowBlur=10; ctx.shadowColor=coreC;
+        ctx.fillStyle=flash?'#fff':coreC;
+        const cp=1+Math.sin(this.t*10)*0.3;
+        ctx.beginPath(); ctx.arc(0,0,4*cp,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.arc(0,0,1.5,0,Math.PI*2); ctx.fill();
+        break;
+      }
+      case 'core_cell': {
+        // 核心细胞：六边形外壳 + 脉动粉色核心 + 能量丝
+        ctx.fillStyle=flash?'#fff':'#5a1a3a';
+        ctx.beginPath();
+        for(let i=0;i<6;i++){ const a=i/6*Math.PI*2; const x=Math.cos(a)*14,y=Math.sin(a)*14; i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+        ctx.closePath(); ctx.fill();
+        // 外壳渐变
+        const cg=ctx.createRadialGradient(0,0,2,0,0,14);
+        if(!flash){ cg.addColorStop(0,'#ff5a8d'); cg.addColorStop(0.6,'#ff3a6d'); cg.addColorStop(1,'#8a1a3a'); }
+        else { cg.addColorStop(0,'#fff'); cg.addColorStop(1,'#faa'); }
+        ctx.fillStyle=cg;
         ctx.beginPath();
         for(let i=0;i<6;i++){ const a=i/6*Math.PI*2; const x=Math.cos(a)*13,y=Math.sin(a)*13; i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle='#ff3a6d'; ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fill(); break;
-      case 'defender':
-        ctx.fillStyle=main;
-        ctx.beginPath(); ctx.moveTo(-14,-12); ctx.lineTo(14,-8); ctx.lineTo(14,8); ctx.lineTo(-14,12);
+        // 能量丝（向内辐射）
+        ctx.shadowBlur=0;
+        ctx.strokeStyle='rgba(255,255,255,0.4)';
+        ctx.lineWidth=1;
+        for(let i=0;i<6;i++){
+          const a=i/6*Math.PI*2+this.t*2;
+          ctx.beginPath(); ctx.moveTo(Math.cos(a)*11,Math.sin(a)*11); ctx.lineTo(Math.cos(a)*5,Math.sin(a)*5); ctx.stroke();
+        }
+        // 脉动核心
+        const pulse=1+Math.sin(this.t*6)*0.3;
+        ctx.shadowBlur=12; ctx.shadowColor='#ff3a6d';
+        ctx.fillStyle=flash?'#fff':'#fff';
+        ctx.beginPath(); ctx.arc(0,0,5*pulse,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#ff3a6d';
+        ctx.beginPath(); ctx.arc(0,0,3*pulse,0,Math.PI*2); ctx.fill();
+        break;
+      }
+      case 'defender': {
+        // 守卫者：箭头形战机 + 双引擎 + 武器舱 + 护甲
+        // 主体（带渐变）
+        const dg=ctx.createLinearGradient(-14,0,14,0);
+        if(!flash){ dg.addColorStop(0,'#9a3a5a'); dg.addColorStop(0.5,'#ff5d7a'); dg.addColorStop(1,'#ffaacc'); }
+        else { dg.addColorStop(0,'#fff'); dg.addColorStop(1,'#fcc'); }
+        ctx.fillStyle=dg;
+        ctx.beginPath(); ctx.moveTo(-16,-12); ctx.lineTo(14,-8); ctx.lineTo(18,0); ctx.lineTo(14,8); ctx.lineTo(-16,12); ctx.lineTo(-12,0);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle='#ff3a6d'; ctx.fillRect(-4,-4,8,8);
-        ctx.fillStyle='#9a4dff'; ctx.fillRect(-14,-4,4,8); break;
-      case 'seeker':
-        ctx.fillStyle=main;
-        ctx.beginPath(); ctx.moveTo(-12,-8); ctx.lineTo(12,0); ctx.lineTo(-12,8);
+        // 中央武器舱
+        ctx.fillStyle=flash?'#fff':'#5a1a3a';
+        ctx.fillRect(-4,-5,12,10);
+        // 红色核心
+        ctx.shadowBlur=8; ctx.shadowColor='#ff3a6d';
+        ctx.fillStyle=flash?'#fff':'#ff3a6d';
+        const dp=1+Math.sin(this.t*5)*0.2;
+        ctx.beginPath(); ctx.arc(2,0,3*dp,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        // 双侧尾翼（紫色）
+        ctx.fillStyle=flash?'#fff':'#9a4dff';
+        ctx.beginPath(); ctx.moveTo(-12,-10); ctx.lineTo(-18,-14); ctx.lineTo(-14,-4); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-12,10); ctx.lineTo(-18,14); ctx.lineTo(-14,4); ctx.closePath(); ctx.fill();
+        // 引擎尾焰
+        const flame=4+Math.sin(this.t*20)*2;
+        ctx.fillStyle='rgba(154,77,255,0.7)';
+        ctx.beginPath(); ctx.moveTo(-16,-3); ctx.lineTo(-22-flame,-1); ctx.lineTo(-22-flame,1); ctx.lineTo(-16,3); ctx.closePath(); ctx.fill();
+        break;
+      }
+      case 'seeker': {
+        // 追踪者：导弹形 + 大眼睛 + 尾焰
+        ctx.fillStyle=flash?'#fff':'#ff8a3c';
+        ctx.beginPath(); ctx.moveTo(-12,-8); ctx.lineTo(8,-6); ctx.lineTo(14,0); ctx.lineTo(8,6); ctx.lineTo(-12,8); ctx.lineTo(-14,0);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(4,0,2,0,Math.PI*2); ctx.fill(); break;
-      case 'fire_beast':
-        ctx.fillStyle=main;
-        ctx.beginPath(); ctx.moveTo(-18,-12); ctx.lineTo(14,-8); ctx.lineTo(20,0); ctx.lineTo(14,8); ctx.lineTo(-18,12); ctx.lineTo(-10,0);
+        // 弹体渐变
+        const sg=ctx.createLinearGradient(0,-8,0,8);
+        if(!flash){ sg.addColorStop(0,'#ffd24d'); sg.addColorStop(0.5,'#ff8a3c'); sg.addColorStop(1,'#aa3a0a'); }
+        else { sg.addColorStop(0,'#fff'); sg.addColorStop(1,'#fca'); }
+        ctx.fillStyle=sg;
+        ctx.beginPath(); ctx.moveTo(-10,-6); ctx.lineTo(6,-5); ctx.lineTo(12,0); ctx.lineTo(6,5); ctx.lineTo(-10,6); ctx.lineTo(-12,0);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle='#ffd24d'; ctx.beginPath(); ctx.arc(6,0,4,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle='#ff3a1a'; ctx.fillRect(-16,-3,5,6); break;
-      case 'fire_snake':
-        ctx.rotate(Math.sin(this.t*4)*0.3);
-        ctx.fillStyle=main;
-        ctx.beginPath(); ctx.moveTo(-16,0);
-        for(let i=-16;i<=16;i+=4){ ctx.lineTo(i, Math.sin((i+this.t*40)*0.3)*6); }
-        ctx.lineTo(16,4); for(let i=16;i>=-16;i-=4){ ctx.lineTo(i, Math.sin((i+this.t*40)*0.3)*6+8); }
+        // 大追踪眼
+        ctx.shadowBlur=10; ctx.shadowColor='#fff';
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.arc(4,0,3.5,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='#0a0';
+        ctx.beginPath(); ctx.arc(5,0,2,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#000';
+        ctx.beginPath(); ctx.arc(6,0,1,0,Math.PI*2); ctx.fill();
+        // 尾焰
+        const sf=5+Math.sin(this.t*25)*2;
+        ctx.fillStyle='rgba(255,154,60,0.8)';
+        ctx.beginPath(); ctx.moveTo(-12,-3); ctx.lineTo(-18-sf,0); ctx.lineTo(-12,3); ctx.closePath(); ctx.fill();
+        break;
+      }
+      case 'fire_beast': {
+        // 火兽：兽形身躯 + 头部 + 双眼 + 火焰鬃毛 + 利爪
+        // 主体（兽身渐变）
+        const bg=ctx.createLinearGradient(-18,0,18,0);
+        if(!flash){ bg.addColorStop(0,'#aa1a0a'); bg.addColorStop(0.5,'#ff5a1a'); bg.addColorStop(1,'#ffd24d'); }
+        else { bg.addColorStop(0,'#fff'); bg.addColorStop(1,'#fda'); }
+        ctx.fillStyle=bg;
+        ctx.beginPath(); ctx.moveTo(-18,-12); ctx.lineTo(-10,-14); ctx.lineTo(8,-10); ctx.lineTo(20,-4); ctx.lineTo(20,4); ctx.lineTo(8,10); ctx.lineTo(-10,14); ctx.lineTo(-18,12); ctx.lineTo(-14,0);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle='#ff3a1a'; ctx.beginPath(); ctx.arc(14,0,3,0,Math.PI*2); ctx.fill(); break;
-      case 'fire_bird':
-        ctx.fillStyle=main;
-        ctx.beginPath(); ctx.moveTo(-14,0); ctx.lineTo(0,-10); ctx.lineTo(14,0); ctx.lineTo(0,10);
+        // 火焰鬃毛（背部跳动）
+        ctx.fillStyle='rgba(255,210,77,'+(0.7+Math.sin(this.t*8)*0.2)+')';
+        for(let i=-2;i<=2;i++){
+          const fh=8+Math.sin(this.t*10+i)*4;
+          ctx.beginPath(); ctx.moveTo(i*6-3,-10); ctx.lineTo(i*6,-14-fh); ctx.lineTo(i*6+3,-10); ctx.closePath(); ctx.fill();
+        }
+        // 头部
+        ctx.fillStyle=flash?'#fff':'#ff7a1a';
+        ctx.beginPath(); ctx.arc(14,0,7,0,Math.PI*2); ctx.fill();
+        // 双眼
+        ctx.shadowBlur=8; ctx.shadowColor='#fff';
+        ctx.fillStyle=flash?'#fff':'#ffd24d';
+        ctx.beginPath(); ctx.arc(16,-3,2,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(16,3,2,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='#000';
+        ctx.beginPath(); ctx.arc(17,-3,1,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(17,3,1,0,Math.PI*2); ctx.fill();
+        // 利爪
+        ctx.fillStyle='#ff3a1a';
+        ctx.beginPath(); ctx.moveTo(-16,-4); ctx.lineTo(-22,-6); ctx.lineTo(-16,-2); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-16,4); ctx.lineTo(-22,6); ctx.lineTo(-16,2); ctx.closePath(); ctx.fill();
+        break;
+      }
+      case 'fire_snake': {
+        // 火蛇：蛇身分段 + 鳞片 + 蛇头 + 信子
+        ctx.rotate(Math.sin(this.t*4)*0.25);
+        // 蛇身（多段椭圆）
+        for(let i=-16;i<=16;i+=4){
+          const y=Math.sin((i+this.t*40)*0.3)*6;
+          const g=ctx.createLinearGradient(0,y-5,0,y+5);
+          if(!flash){ g.addColorStop(0,'#ffd24d'); g.addColorStop(0.5,'#ff9a3c'); g.addColorStop(1,'#aa3a0a'); }
+          else { g.addColorStop(0,'#fff'); g.addColorStop(1,'#fca'); }
+          ctx.fillStyle=g;
+          ctx.beginPath(); ctx.ellipse(i,y,3,5,0,0,Math.PI*2); ctx.fill();
+        }
+        // 蛇头
+        ctx.fillStyle=flash?'#fff':'#ff5a1a';
+        ctx.beginPath(); ctx.arc(16,0,6,0,Math.PI*2); ctx.fill();
+        // 眼
+        ctx.fillStyle=flash?'#fff':'#ff0';
+        ctx.beginPath(); ctx.arc(18,-2,1.5,0,Math.PI*2); ctx.fill();
+        // 信子（吐出）
+        const tw=Math.sin(this.t*8);
+        if(tw>0){
+          ctx.strokeStyle='#ff3a6d'; ctx.lineWidth=1.5;
+          ctx.beginPath(); ctx.moveTo(22,0); ctx.lineTo(26+tw*2,-2); ctx.moveTo(22,0); ctx.lineTo(26+tw*2,2); ctx.stroke();
+        }
+        break;
+      }
+      case 'fire_bird': {
+        // 火鸟：菱形身 + 振翅 + 尖喙 + 尾羽
+        const wing=Math.sin(this.t*12)*8;
+        // 翅膀
+        ctx.fillStyle=flash?'#fff':'#ff5a1a';
+        ctx.beginPath(); ctx.moveTo(-4,-2); ctx.lineTo(-16,-12-wing); ctx.lineTo(-10,-2); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-4,2); ctx.lineTo(-16,12+wing); ctx.lineTo(-10,2); ctx.closePath(); ctx.fill();
+        // 身体（渐变）
+        const bg=ctx.createLinearGradient(-14,0,14,0);
+        if(!flash){ bg.addColorStop(0,'#ff5a1a'); bg.addColorStop(0.5,'#ffd24d'); bg.addColorStop(1,'#fff8d0'); }
+        else { bg.addColorStop(0,'#fff'); bg.addColorStop(1,'#fff'); }
+        ctx.fillStyle=bg;
+        ctx.beginPath(); ctx.moveTo(-14,0); ctx.lineTo(-2,-9); ctx.lineTo(12,-3); ctx.lineTo(16,0); ctx.lineTo(12,3); ctx.lineTo(-2,9);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle='#ff5a1a'; ctx.beginPath();
-        ctx.moveTo(-6,-2); ctx.lineTo(-14,-8); ctx.lineTo(-8,-2); ctx.closePath(); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(-6,2); ctx.lineTo(-14,8); ctx.lineTo(-8,2); ctx.closePath(); ctx.fill(); break;
-      case 'fire_ball':
-        const fbPulse=1+Math.sin(this.t*6)*0.15;
+        // 尖喙
+        ctx.fillStyle=flash?'#fff':'#aa3a0a';
+        ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(22,-1); ctx.lineTo(22,1); ctx.closePath(); ctx.fill();
+        // 眼
+        ctx.shadowBlur=6; ctx.shadowColor='#000';
+        ctx.fillStyle='#000';
+        ctx.beginPath(); ctx.arc(6,-2,1.5,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        // 尾羽
+        ctx.fillStyle=flash?'#fff':'rgba(255,154,60,0.7)';
+        ctx.beginPath(); ctx.moveTo(-14,-3); ctx.lineTo(-20,-6); ctx.lineTo(-18,0); ctx.lineTo(-20,6); ctx.lineTo(-14,3); ctx.closePath(); ctx.fill();
+        break;
+      }
+      case 'fire_ball': {
+        // 火球：脉动球 + 火焰光晕 + 高光 + 拖尾火星
+        const fbPulse=1+Math.sin(this.t*6)*0.18;
         ctx.scale(fbPulse,fbPulse);
-        const fbg=ctx.createRadialGradient(0,0,0,0,0,14);
-        fbg.addColorStop(0,'#ffd24d'); fbg.addColorStop(0.6,'#ff5a1a'); fbg.addColorStop(1,'#ff3a1a');
+        // 外层火焰光晕
+        ctx.shadowBlur=20; ctx.shadowColor='#ff5a1a';
+        const og=ctx.createRadialGradient(0,0,8,0,0,18);
+        og.addColorStop(0,'rgba(255,210,77,0.8)'); og.addColorStop(1,'rgba(255,90,26,0)');
+        ctx.fillStyle=og;
+        ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
+        // 主球
+        const fbg=ctx.createRadialGradient(-3,-3,0,0,0,14);
+        fbg.addColorStop(0,'#fff8d0'); fbg.addColorStop(0.4,'#ffd24d'); fbg.addColorStop(0.8,'#ff5a1a'); fbg.addColorStop(1,'#aa1a0a');
         ctx.fillStyle=fbg;
         ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle='#fff8d0'; ctx.beginPath(); ctx.arc(-3,-3,3,0,Math.PI*2); ctx.fill(); break;
+        // 高光点
+        ctx.shadowBlur=0;
+        ctx.fillStyle='rgba(255,255,255,0.9)';
+        ctx.beginPath(); ctx.arc(-3,-3,3,0,Math.PI*2); ctx.fill();
+        // 表面火星（旋转）
+        for(let i=0;i<3;i++){
+          const a=this.t*3+i*Math.PI*2/3;
+          ctx.fillStyle='rgba(255,210,77,0.6)';
+          ctx.beginPath(); ctx.arc(Math.cos(a)*7,Math.sin(a)*7,1.5,0,Math.PI*2); ctx.fill();
+        }
+        break;
+      }
+      case 'mutant_grunt': {
+        // 变异兵：人形身躯 + 大头 + 触手 + 腐蚀液口
+        const sw=Math.sin(this.t*5)*2;
+        // 身躯
+        const bg=ctx.createLinearGradient(0,-16,0,16);
+        if(!flash){ bg.addColorStop(0,'#a0e050'); bg.addColorStop(0.5,'#5a8a2a'); bg.addColorStop(1,'#2a4a0a'); }
+        else { bg.addColorStop(0,'#fff'); bg.addColorStop(1,'#afa'); }
+        ctx.fillStyle=bg;
+        ctx.beginPath();
+        ctx.moveTo(-10,14); ctx.lineTo(-12,-4); ctx.lineTo(-8,-10); ctx.lineTo(-2,-14);
+        ctx.lineTo(4,-14); ctx.lineTo(10,-10); ctx.lineTo(12,-4); ctx.lineTo(10,14);
+        ctx.lineTo(6,16); ctx.lineTo(-6,16);
+        ctx.closePath(); ctx.fill();
+        // 大头
+        ctx.fillStyle=flash?'#fff':'#7ace3a';
+        ctx.beginPath(); ctx.arc(0,-12,8,0,Math.PI*2); ctx.fill();
+        // 触手（头部两侧摆动）
+        ctx.strokeStyle=flash?'#fff':'#5a8a2a'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(-6,-14); ctx.quadraticCurveTo(-12,-18+sw,-14,-22); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6,-14); ctx.quadraticCurveTo(12,-18-sw,14,-22); ctx.stroke();
+        // 双眼（发光红）
+        ctx.shadowBlur=8; ctx.shadowColor='#f00';
+        ctx.fillStyle=flash?'#fff':'#ff2020';
+        ctx.beginPath(); ctx.arc(-3,-13,1.8,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(3,-13,1.8,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        // 腐蚀液口（流淌绿液）
+        ctx.shadowBlur=6; ctx.shadowColor=COLORS.corrosive;
+        ctx.fillStyle=flash?'#fff':COLORS.corrosive;
+        ctx.beginPath(); ctx.arc(0,-7,2.5,0,Math.PI*2); ctx.fill();
+        // 滴落的液滴
+        ctx.fillStyle='rgba(122,255,58,0.6)';
+        ctx.beginPath(); ctx.arc(0,-3+sw,1.5,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0,2-sw*0.5,1,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        // 四肢
+        ctx.fillStyle=flash?'#fff':'#4a6a1a';
+        ctx.fillRect(-12,0,4,12); ctx.fillRect(8,0,4,12);
+        break;
+      }
+      case 'mutant_brute': {
+        // 变异巨兽：巨大身躯 + 多眼 + 巨口 + 双臂 + 脊刺
+        const sw=Math.sin(this.t*3)*3;
+        // 身躯（带渐变）
+        const bg=ctx.createLinearGradient(0,-22,0,22);
+        if(!flash){ bg.addColorStop(0,'#6a9a3a'); bg.addColorStop(0.5,'#3a6a1a'); bg.addColorStop(1,'#1a2a0a'); }
+        else { bg.addColorStop(0,'#fff'); bg.addColorStop(1,'#afa'); }
+        ctx.fillStyle=bg;
+        ctx.beginPath();
+        ctx.moveTo(-18,20); ctx.lineTo(-20,-8); ctx.lineTo(-14,-18); ctx.lineTo(-4,-22);
+        ctx.lineTo(6,-22); ctx.lineTo(16,-18); ctx.lineTo(20,-8); ctx.lineTo(18,20);
+        ctx.lineTo(12,22); ctx.lineTo(-12,22);
+        ctx.closePath(); ctx.fill();
+        // 脊背尖刺
+        ctx.fillStyle=flash?'#fff':'#2a4a0a';
+        for(let i=-2;i<=2;i++){
+          ctx.beginPath(); ctx.moveTo(i*6-3,-20); ctx.lineTo(i*6,-28-Math.sin(this.t*4+i)*3); ctx.lineTo(i*6+3,-20); ctx.closePath(); ctx.fill();
+        }
+        // 巨大头颅
+        ctx.fillStyle=flash?'#fff':'#5a8a2a';
+        ctx.beginPath(); ctx.arc(0,-16,12,0,Math.PI*2); ctx.fill();
+        // 三只眼（发光）
+        ctx.shadowBlur=10; ctx.shadowColor='#f00';
+        ctx.fillStyle=flash?'#fff':'#ff3030';
+        const ep=1+Math.sin(this.t*7)*0.2;
+        ctx.beginPath(); ctx.arc(-5,-18,2*ep,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(5,-18,2*ep,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0,-22,2.5*ep,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        // 巨口（漏腐蚀液）
+        ctx.fillStyle=flash?'#fff':'#1a0a0a';
+        ctx.beginPath(); ctx.ellipse(0,-10,8,4,0,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=6; ctx.shadowColor=COLORS.corrosive;
+        ctx.fillStyle=flash?'#fff':COLORS.corrosive;
+        ctx.beginPath(); ctx.ellipse(0,-9,6,2.5,0,0,Math.PI*2); ctx.fill();
+        // 滴落液滴
+        ctx.fillStyle='rgba(122,255,58,0.6)';
+        ctx.beginPath(); ctx.arc(-3,-4+sw,1.5,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(3,0-sw,1.2,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0,4,1,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        // 双臂（粗壮）
+        ctx.fillStyle=flash?'#fff':'#4a6a1a';
+        ctx.fillRect(-20,-2,8,18); ctx.fillRect(12,-2,8,18);
+        // 爪
+        ctx.fillStyle=flash?'#fff':'#2a1a0a';
+        for(let i=0;i<3;i++){
+          ctx.beginPath(); ctx.moveTo(-20+i*3,16); ctx.lineTo(-22+i*3,22); ctx.lineTo(-18+i*3,22); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(12+i*3,16); ctx.lineTo(10+i*3,22); ctx.lineTo(14+i*3,22); ctx.closePath(); ctx.fill();
+        }
+        break;
+      }
+      case 'mutant_crawler': {
+        // 爬行变异体：扁身体 + 多足 + 大眼
+        const sw=Math.sin(this.t*8)*1.5;
+        // 身体（椭圆扁)
+        const cg=ctx.createRadialGradient(0,0,2,0,0,13);
+        if(!flash){ cg.addColorStop(0,'#b0e050'); cg.addColorStop(0.6,'#7aa030'); cg.addColorStop(1,'#2a4a0a'); }
+        else { cg.addColorStop(0,'#fff'); cg.addColorStop(1,'#afa'); }
+        ctx.fillStyle=cg;
+        ctx.beginPath(); ctx.ellipse(0,0,12,7,0,0,Math.PI*2); ctx.fill();
+        // 多足（摆动）
+        ctx.strokeStyle=flash?'#fff':'#3a5a1a'; ctx.lineWidth=1.5;
+        for(let i=-2;i<=2;i++){
+          const lx=i*4;
+          const ph=Math.sin(this.t*10+i)*3;
+          ctx.beginPath(); ctx.moveTo(lx,5); ctx.lineTo(lx-2,10+ph); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(lx,-5); ctx.lineTo(lx-2,-10-ph); ctx.stroke();
+        }
+        // 大眼
+        ctx.shadowBlur=6; ctx.shadowColor='#f00';
+        ctx.fillStyle=flash?'#fff':'#ff4040';
+        ctx.beginPath(); ctx.arc(4,0,3+sw*0.3,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='#000';
+        ctx.beginPath(); ctx.arc(5,0,1.5,0,Math.PI*2); ctx.fill();
+        // 背部斑纹
+        ctx.fillStyle='rgba(40,80,10,0.5)';
+        ctx.beginPath(); ctx.arc(-4,0,2,0,Math.PI*2); ctx.fill();
+        break;
+      }
+      case 'ambusher': {
+        // 偷袭者：菱形体 + 鞭刺尾 + 警告时闪烁红圈
+        // 警告圈（state 0 时显示）
+        if(this.ambushState===0){
+          ctx.shadowBlur=0;
+          const wp=0.3+Math.sin(this.t*20)*0.3;
+          ctx.strokeStyle='rgba(255,60,60,'+wp+')';
+          ctx.lineWidth=2;
+          ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.stroke();
+        }
+        // 身体（深紫，刺球形）
+        const ag=ctx.createRadialGradient(0,0,2,0,0,14);
+        if(!flash){ ag.addColorStop(0,'#d05aff'); ag.addColorStop(0.6,'#8030bf'); ag.addColorStop(1,'#3a0a5a'); }
+        else { ag.addColorStop(0,'#fff'); ag.addColorStop(1,'#faf'); }
+        ctx.fillStyle=ag;
+        ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.fill();
+        // 周身尖刺（旋转）
+        ctx.save();
+        ctx.rotate(this.t*4);
+        ctx.fillStyle=flash?'#fff':'#b04aff';
+        for(let i=0;i<8;i++){
+          ctx.rotate(Math.PI/4);
+          ctx.beginPath(); ctx.moveTo(11,0); ctx.lineTo(18,-3); ctx.lineTo(18,3); ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+        // 中央大眼（冲刺时变红）
+        ctx.shadowBlur=10;
+        const eyeC=this.ambushState===1?'#ff2020':'#fff';
+        ctx.shadowColor=eyeC;
+        ctx.fillStyle=flash?'#fff':eyeC;
+        const ep=1+Math.sin(this.t*12)*0.2;
+        ctx.beginPath(); ctx.arc(0,0,5*ep,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='#000';
+        ctx.beginPath(); ctx.arc(0,0,2.5,0,Math.PI*2); ctx.fill();
+        // 冲刺尾焰
+        if(this.ambushState===1){
+          ctx.fillStyle='rgba(255,60,60,0.6)';
+          ctx.beginPath(); ctx.moveTo(-13,0); ctx.lineTo(-25,-4); ctx.lineTo(-22,0); ctx.lineTo(-25,4); ctx.closePath(); ctx.fill();
+        }
+        break;
+      }
     }
     ctx.shadowBlur=0;
     ctx.restore();
@@ -1403,7 +1975,7 @@ class Boss{
     this.x=game.camX + W + 140; this.y=H/2;
     this.entered=false; this.dead=false;
     this.fireTimer=1.5; this.t=0; this.hitFlash=0;
-    const hpMap={1:140,2:200,3:280,4:500}; // boss4 血量500
+    const hpMap={1:140,2:200,3:280,4:500,5:750}; // boss5 骷髅血量最高
     this.maxHp=hpMap[type]||140;
     this.hp=this.maxHp;
     this.phase=1; this.dirY=1; this.alarmPlayed=false;
@@ -1411,7 +1983,8 @@ class Boss{
     if(type===1){ this.w=200; this.h=160; }
     else if(type===2){ this.w=220; this.h=140; }
     else if(type===3){ this.w=240; this.h=160; }
-    else { this.w=260; this.h=150; }
+    else if(type===4){ this.w=260; this.h=150; }
+    else { this.w=280; this.h=200; }   // type 5 骷髅 Boss 体型更大
     this._rockPts=null;
   }
   coreBounds(){ return {x:this.x-24,y:this.y-24,w:48,h:48}; }
@@ -1446,10 +2019,14 @@ class Boss{
         if(this.phase===1){ this.fireTimer=0.8; this.fireSpiral(8); }
         else if(this.phase===2){ this.fireTimer=0.7; this.fireSpiral(10); this.fireAimed(2,0.12); }
         else { this.fireTimer=0.55; this.fireSpiral(12); this.fireAimed(3,0.1); if(Math.random()<0.4) this.fireFan(5,0.4); }
-      } else { // type 4 火龙：火球+扇形（发射频率降低50%）
+      } else if(this.type===4){ // type 4 火龙：火球+扇形（发射频率降低50%）
         if(this.phase===1){ this.fireTimer=2.0; this.fireFan(5,0.35); this.summonFireBall(); }
         else if(this.phase===2){ this.fireTimer=1.6; this.fireFan(7,0.4); this.fireAimed(2,0.1); this.summonFireBall(); }
         else { this.fireTimer=1.2; this.fireSpiral(8); this.fireFan(6,0.45); this.summonFireBall(); }
+      } else if(this.type===5){ // type 5 骷髅王：能量圈 + 腐蚀液 + 召唤变异体
+        if(this.phase===1){ this.fireTimer=2.2; this.fireRing(16,120); }
+        else if(this.phase===2){ this.fireTimer=1.8; this.fireRing(20,120); if(Math.random()<0.5) this.summonMutant(); }
+        else { this.fireTimer=1.4; this.fireRing(24,130); this.summonMutant(); if(Math.random()<0.4) this.fireCorrosiveFan(); }
       }
     }
   }
@@ -1458,6 +2035,21 @@ class Boss{
   }
   summonFireBall(){
     this.game.enemies.push(new Enemy('fire_ball', this.x-rand(20,80), this.y+rand(-60,60), this.game));
+  }
+  // 骷髅王召唤变异体
+  summonMutant(){
+    this.game.enemies.push(new Enemy(choice(['mutant_grunt','mutant_crawler']), this.x-rand(20,80), this.y+rand(-80,80), this.game));
+  }
+  // 骷髅王：腐蚀液扇形（朝玩家方向）
+  fireCorrosiveFan(){
+    const p=this.game.player;
+    const sp=CFG.enemyBulletSpeed*0.8;
+    const base=Math.atan2(p.y-this.y, p.x-this.x);
+    for(let i=0;i<5;i++){
+      const a=base+(i-2)*0.22;
+      this.game.bullets.push(new Bullet(this.x-30,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:11,h:11,dmg:1,color:COLORS.corrosive,friendly:false,corrosive:true}));
+    }
   }
   fireAimed(n,spread){
     const p=this.game.player;
@@ -1488,6 +2080,16 @@ class Boss{
         {w:9,h:9,dmg:1,color:COLORS.enemyBullet,friendly:false}));
     }
   }
+  // 骷髅王：能量圈——从中心向四周均匀放射 n 颗子弹（形成扩张圆环）
+  fireRing(n, speed){
+    const sp=speed||CFG.enemyBulletSpeed;
+    const off=this.t*1.5;   // 每次发射有旋转偏移，让多圈不重合
+    for(let i=0;i<n;i++){
+      const a=(i/n)*Math.PI*2+off;
+      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:9,h:9,dmg:1,color:COLORS.boss5,friendly:false}));
+    }
+  }
   takeDamage(dmg,isCore){
     this.hp-=isCore?dmg*2:dmg;
     this.hitFlash=0.05;
@@ -1509,7 +2111,8 @@ class Boss{
     if(this.type===1) return COLORS.boss1;
     if(this.type===2) return COLORS.boss2;
     if(this.type===3) return COLORS.boss3;
-    return COLORS.boss4;
+    if(this.type===4) return COLORS.boss4;
+    return COLORS.boss5;
   }
   draw(ctx,camX){
     const sx=this.x-camX;
@@ -1563,7 +2166,7 @@ class Boss{
       ctx.shadowBlur=25; ctx.shadowColor='#fff';
       ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,0,22*pulse,0,Math.PI*2); ctx.fill();
       ctx.fillStyle=this.bossColor(); ctx.beginPath(); ctx.arc(0,0,14*pulse,0,Math.PI*2); ctx.fill();
-    } else { // type 4 火龙
+    } else if(this.type===4){ // type 4 火龙
       ctx.fillStyle=flash?'#fff':this.bossColor();
       // 龙身：长蛇形
       ctx.beginPath();
@@ -1593,6 +2196,80 @@ class Boss{
         ctx.shadowBlur=15; ctx.shadowColor='#ff5a1a';
         ctx.fillStyle='rgba(255,90,26,'+(0.4+Math.sin(this.t*10)*0.2)+')';
         ctx.beginPath(); ctx.moveTo(110,0); ctx.lineTo(150,-8); ctx.lineTo(160,0); ctx.lineTo(150,8); ctx.closePath(); ctx.fill();
+      }
+    } else if(this.type===5){ // type 5 骷髅王
+      // 额外能量圈光环（持续旋转）
+      ctx.shadowBlur=0;
+      ctx.strokeStyle='rgba(208,208,224,'+(0.2+Math.sin(this.t*2)*0.1)+')';
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(0,0,130+Math.sin(this.t*1.5)*6,0,Math.PI*2); ctx.stroke();
+      // 头骨主体（渐变骨色）
+      const skullG=ctx.createRadialGradient(-20,-20,10,0,0,90);
+      if(!flash){ skullG.addColorStop(0,'#f0f0fa'); skullG.addColorStop(0.5,'#d0d0e0'); skullG.addColorStop(1,'#6a6a7a'); }
+      else { skullG.addColorStop(0,'#fff'); skullG.addColorStop(1,'#ccc'); }
+      ctx.fillStyle=skullG;
+      ctx.shadowBlur=18; ctx.shadowColor=this.bossColor();
+      ctx.beginPath();
+      // 头骨轮廓：上部圆顶 + 下颌
+      ctx.moveTo(-70,30);
+      ctx.quadraticCurveTo(-90,0,-80,-40);
+      ctx.quadraticCurveTo(-65,-80,0,-85);
+      ctx.quadraticCurveTo(65,-80,80,-40);
+      ctx.quadraticCurveTo(90,0,70,30);
+      // 下颌齿状
+      ctx.lineTo(50,50); ctx.lineTo(40,35); ctx.lineTo(25,55); ctx.lineTo(10,35);
+      ctx.lineTo(-10,55); ctx.lineTo(-25,35); ctx.lineTo(-40,50);
+      ctx.closePath();
+      ctx.fill();
+      // 额头裂纹
+      ctx.shadowBlur=0;
+      ctx.strokeStyle='#3a3a4a'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(-30,-60); ctx.lineTo(-20,-40); ctx.lineTo(-28,-25); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(25,-55); ctx.lineTo(35,-30); ctx.stroke();
+      // 双眼眼窝（发光紫黑能量）
+      const eyePulse=1+Math.sin(this.t*5)*0.15;
+      ctx.shadowBlur=20; ctx.shadowColor='#9a3aff';
+      const eyeG=ctx.createRadialGradient(-30,-20,0,-30,-20,20);
+      eyeG.addColorStop(0,'#fff'); eyeG.addColorStop(0.3,'#d05aff'); eyeG.addColorStop(1,'#1a0a2a');
+      ctx.fillStyle=eyeG;
+      ctx.beginPath(); ctx.ellipse(-30,-20,16*eyePulse,18*eyePulse,0,0,Math.PI*2); ctx.fill();
+      const eyeG2=ctx.createRadialGradient(30,-20,0,30,-20,20);
+      eyeG2.addColorStop(0,'#fff'); eyeG2.addColorStop(0.3,'#d05aff'); eyeG2.addColorStop(1,'#1a0a2a');
+      ctx.fillStyle=eyeG2;
+      ctx.beginPath(); ctx.ellipse(30,-20,16*eyePulse,18*eyePulse,0,0,Math.PI*2); ctx.fill();
+      // 瞳孔（核心红点）
+      ctx.shadowBlur=12; ctx.shadowColor='#ff2020';
+      ctx.fillStyle='#ff3030';
+      ctx.beginPath(); ctx.arc(-30,-18,3*eyePulse,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(30,-18,3*eyePulse,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+      // 鼻骨（三角空洞）
+      ctx.fillStyle='#1a0a1a';
+      ctx.beginPath(); ctx.moveTo(0,-5); ctx.lineTo(-8,15); ctx.lineTo(8,15); ctx.closePath(); ctx.fill();
+      // 牙齿（下排，发亮）
+      ctx.fillStyle='#fffaf0';
+      ctx.shadowBlur=4; ctx.shadowColor='#fff';
+      for(let i=-3;i<=3;i++){
+        ctx.beginPath();
+        ctx.moveTo(i*12+6,35); ctx.lineTo(i*12,55); ctx.lineTo(i*12+12,55); ctx.closePath();
+        ctx.fill();
+      }
+      ctx.shadowBlur=0;
+      // 核心弱点（眉心第三眼——只有这里算核心）
+      const cpulse=1+Math.sin(this.t*7)*0.3;
+      ctx.shadowBlur=20; ctx.shadowColor='#fff';
+      ctx.fillStyle='rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(0,-55,8*cpulse,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=this.bossColor();
+      ctx.beginPath(); ctx.arc(0,-55,5*cpulse,0,Math.PI*2); ctx.fill();
+      // phase≥2 时周身旋转能量圈（视觉警告）
+      if(this.phase>=2){
+        ctx.strokeStyle='rgba(208,90,255,'+(0.5+Math.sin(this.t*4)*0.3)+')';
+        ctx.lineWidth=3;
+        ctx.save(); ctx.rotate(this.t*1.2);
+        ctx.beginPath(); ctx.arc(0,0,95,0,Math.PI*1.4); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,105,Math.PI,Math.PI*1.4+Math.PI); ctx.stroke();
+        ctx.restore();
       }
     }
     ctx.shadowBlur=0;
@@ -1637,6 +2314,18 @@ const WAVE_TEMPLATES = {
     ()=>[{t:'fire_beast',oy:-60},{t:'fire_snake',oy:60}],
     ()=>[{t:'fire_snake',oy:-100},{t:'fire_snake',oy:0},{t:'fire_snake',oy:100}],
   ],
+  5: [   // 第五关：β星人墓穴——变异体外星人 + 偷袭者
+    ()=>[{t:'mutant_grunt',oy:rand(-100,100)}],
+    ()=>[{t:'mutant_crawler',oy:-90},{t:'mutant_crawler',oy:0},{t:'mutant_crawler',oy:90}],
+    ()=>[{t:'ambusher',oy:-180}],              // 从屏幕上方冲撞
+    ()=>[{t:'ambusher',oy:180}],               // 从屏幕下方冲撞
+    ()=>[{t:'mutant_grunt',oy:-80},{t:'mutant_grunt',oy:80}],
+    ()=>[{t:'mutant_brute',oy:rand(-60,60)}],
+    ()=>[{t:'ambusher',oy:-180},{t:'ambusher',oy:180}],   // 上下夹击
+    ()=>[{t:'mutant_crawler',oy:-120},{t:'mutant_grunt',oy:0},{t:'mutant_crawler',oy:120}],
+    ()=>[{t:'mutant_brute',oy:-60},{t:'mutant_grunt',oy:80}],
+    ()=>[{t:'mutant_grunt',oy:-100},{t:'mutant_grunt',oy:0},{t:'mutant_grunt',oy:100}],
+  ],
 };
 class Spawner{
   constructor(game,interval,waveList){
@@ -1664,6 +2353,7 @@ const LEVELS=[
   { name:'第二关 · 堡垒内部', theme:'fortress', length:3600, scrollSpeed:105, spawnInterval:1.1, hpScale:1.4, bossType:2, obstacleType:'fortress' },
   { name:'第三关 · 堡垒核心', theme:'core',     length:4000, scrollSpeed:115, spawnInterval:0.95, hpScale:1.9, bossType:3, obstacleType:'core' },
   { name:'第四关 · 火海',     theme:'fire',     length:4400, scrollSpeed:125, spawnInterval:0.9,  hpScale:1.2, bossType:4, obstacleType:'fire' },
+  { name:'第五关 · β星人墓穴', theme:'tomb',    length:4800, scrollSpeed:130, spawnInterval:0.85, hpScale:1.6, bossType:5, obstacleType:'tomb' },
 ];
 
 /* ------------------------------ 主游戏 ------------------------------ */
