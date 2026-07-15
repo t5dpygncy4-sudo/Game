@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>贴图测试</title></head>
+<body>
+<h3>贴图加载测试</h3>
+<div id="status">加载中...</div>
+<div id="results"></div>
+<script>
+const IMG_BASE = 'https://remote-pod.enterprise.trae.cn/api/ide/v1/text_to_image';
+function texImg(prompt, size){ return IMG_BASE + '?prompt=' + encodeURIComponent(prompt) + '&image_size=' + size; }
+const tests = [
+  ['bg_asteroid', texImg('photorealistic deep space asteroid field, dark cosmic background', 'landscape_16_9')],
+  ['enemy_fire_ball', texImg('floating fireball with flames, glowing orange core, isolated on dark black background, centered, game sprite', 'square')],
+  ['boss_4', texImg('massive fire dragon boss, red scales and flames, spreading wings, isolated on dark background, centered, game boss sprite', 'landscape_4_3')],
+];
+let loaded = 0;
+const results = document.getElementById('results');
+for(const [key, url] of tests){
+  const img = new Image();
+  // 不设 crossOrigin
+  const row = document.createElement('div');
+  row.innerHTML = '<b>'+key+'</b>: ';
+  const status = document.createElement('span');
+  status.textContent = '加载中...';
+  row.appendChild(status);
+  const preview = document.createElement('img');
+  preview.style.maxWidth = '200px';
+  preview.style.maxHeight = '150px';
+  preview.style.display = 'none';
+  row.appendChild(document.createElement('br'));
+  row.appendChild(preview);
+  results.appendChild(row);
+  img.onload = ()=>{
+    status.textContent = 'OK  '+img.naturalWidth+'x'+img.naturalHeight;
+    status.style.color = 'green';
+    preview.src = url;
+    preview.style.display = 'block';
+    loaded++;
+    if(loaded===tests.length) document.getElementById('status').textContent='全部完成';
+  };
+  img.onerror = ()=>{
+    status.textContent = '失败 (onerror)';
+    status.style.color = 'red';
+    loaded++;
+    if(loaded===tests.length) document.getElementById('status').textContent='完成（含失败）';
+  };
+  img.src = url;
+}
+</script>
+</body></html>
