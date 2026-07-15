@@ -124,11 +124,13 @@ function preloadImages(onDone){
     onDone && onDone();
     return;
   }
-  // 兜底超时：8 秒后无论如何都进入标题画面，未就绪的贴图自动回退矢量
-  const fallback = setTimeout(()=>{ if(imgLoaded < imgTotal){ imgLoaded = imgTotal; onDone && onDone(); } }, 8000);
+  // 兜底超时：25 秒后无论如何都进入标题画面，未就绪的贴图自动回退矢量
+  const fallback = setTimeout(()=>{ if(imgLoaded < imgTotal){ imgLoaded = imgTotal; onDone && onDone(); } }, 25000);
   for(const [key, url] of list){
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // 不设置 crossOrigin：贴图 API 会 301 重定向到 pexels 等图床，
+    // 这些图床不返回 CORS 头，设置 crossOrigin 会导致加载失败。
+    // 我们仅用 drawImage 绘制贴图（不读取像素），无需 CORS。
     const finish = (ok)=>{
       IMG_READY[key] = ok;
       imgLoaded++;
@@ -1624,8 +1626,8 @@ class Game{
     this.starfield.update(dt,bgSpeed);
 
     if(this.state==='LOADING'){
-      // 加载中：仅等待贴图，按回车可强制跳过
-      if(Input.justPressed('enter') && imgLoaded>=imgTotal){ this.state='TITLE'; }
+      // 加载中：按回车可随时跳过，未就绪贴图自动回退矢量
+      if(Input.justPressed('enter')){ this.state='TITLE'; }
       return;
     }
     if(this.state==='TITLE'){
@@ -1979,11 +1981,9 @@ class Game{
     CTX.strokeStyle='rgba(255,255,255,0.4)'; CTX.lineWidth=1; CTX.strokeRect(bx,by,bw,bh);
     CTX.fillStyle='#9ef'; CTX.font='16px monospace';
     CTX.fillText(Math.floor(pct*100)+'%   '+imgLoaded+'/'+imgTotal+' 贴图', W/2, by+38);
-    if(imgLoaded>=imgTotal){
-      if(Math.floor(performance.now()/500)%2===0){
-        CTX.fillStyle='#ffd24d'; CTX.font='bold 18px monospace';
-        CTX.fillText('按 回车 进入游戏', W/2, H-60);
-      }
+    if(Math.floor(performance.now()/500)%2===0){
+      CTX.fillStyle='#ffd24d'; CTX.font='bold 18px monospace';
+      CTX.fillText(imgLoaded>=imgTotal ? '按 回车 进入游戏' : '按 回车 跳过加载', W/2, H-60);
     }
     CTX.restore();
   }
