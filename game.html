@@ -66,84 +66,6 @@ const COLORS = {
   boss1:'#b07a3a', boss2:'#9a4dff', boss3:'#ff3a6d', boss4:'#ff3a1a',
 };
 
-/* ------------------------------ 贴图系统 ------------------------------ */
-// 所有贴图通过文本生成接口加载，浏览器并行下载，失败则回退到矢量绘制
-const IMG_BASE = 'https://remote-pod.enterprise.trae.cn/api/ide/v1/text_to_image';
-function texImg(prompt, size){
-  return IMG_BASE + '?prompt=' + encodeURIComponent(prompt) + '&image_size=' + size;
-}
-const TEXTURES = {
-  bg: {
-    asteroid: texImg('photorealistic deep space asteroid field, dark cosmic background, floating rocky asteroids and meteorites, distant stars, faint purple nebula, cinematic atmospheric sci-fi game background, wide panoramic landscape, high detail', 'landscape_16_9'),
-    fortress: texImg('sci-fi fortress interior corridor background, metallic walls with pipes and cables, industrial dark atmosphere, dim orange warning lights, cinematic photorealistic game background, wide panoramic landscape', 'landscape_16_9'),
-    core:     texImg('glowing red and pink energy core reactor chamber, mechanical structures, sparks, dark sci-fi interior, cinematic photorealistic game background, wide panoramic landscape', 'landscape_16_9'),
-    fire:     texImg('volcanic lava sea landscape, molten rock with fire and embers, dark smoky sky, hellish apocalyptic, cinematic photorealistic game background, wide panoramic landscape', 'landscape_16_9'),
-  },
-  enemy: {
-    asteroid_s:  texImg('single small gray rocky asteroid floating in space, detailed cratered surface, isolated on pure black background, centered, game sprite', 'square'),
-    asteroid_m:  texImg('single medium brown asteroid with detailed cratered rocky surface, isolated on pure black background, centered, game sprite', 'square'),
-    asteroid_l:  texImg('large detailed asteroid with rocky cratered surface, isolated on pure black background, centered, game sprite', 'square'),
-    miner:       texImg('sci-fi mining drone spacecraft with drill, orange and metallic armor, isolated on pure black background, centered, game sprite', 'square'),
-    turret:      texImg('sci-fi gun turret weapon, purple and metallic, mounted cannon, isolated on pure black background, centered, game sprite', 'square'),
-    drone_swarm: texImg('small purple alien drone spacecraft, glowing core, isolated on pure black background, centered, game sprite', 'square'),
-    laser_node:  texImg('blue glowing laser emitter node device, sci-fi crystal, isolated on pure black background, centered, game sprite', 'square'),
-    core_cell:   texImg('red glowing energy cell orb with metallic shell, sci-fi reactor core, isolated on pure black background, centered, game sprite', 'square'),
-    defender:    texImg('red defense robot mech, sci-fi enemy craft with cannons, isolated on pure black background, centered, game sprite', 'square'),
-    seeker:      texImg('orange seeker missile bot with thrusters, sci-fi homing drone, isolated on pure black background, centered, game sprite', 'square'),
-    splitter:    texImg('alien creature with organic tentacles, green and purple glowing, isolated on pure black background, centered, game sprite', 'square'),
-    portal:      texImg('glowing purple portal vortex swirl, sci-fi energy gateway, isolated on pure black background, centered, game sprite', 'square'),
-    fire_beast:  texImg('fire beast creature, demonic with flames, orange and red, isolated on dark black background, centered, game sprite', 'square'),
-    fire_snake:  texImg('fire serpent dragon, orange flames, coiled, isolated on dark black background, centered, game sprite', 'square'),
-    fire_bird:   texImg('phoenix fire bird with spread wings, orange and yellow flames, isolated on dark black background, centered, game sprite', 'square'),
-    fire_ball:   texImg('floating fireball with flames, glowing orange core, isolated on dark black background, centered, game sprite', 'square'),
-  },
-  boss: {
-    1: texImg('giant asteroid boss monster with rocky armor and glowing red eyes, massive cosmic threat, isolated on dark space background, centered, game boss sprite', 'landscape_4_3'),
-    2: texImg('purple sci-fi fortress boss, mechanical war machine with cannons, isolated on dark background, centered, game boss sprite', 'landscape_4_3'),
-    3: texImg('red energy core boss with mechanical tentacles and glowing center, isolated on dark background, centered, game boss sprite', 'landscape_4_3'),
-    4: texImg('massive fire dragon boss, red scales and flames, spreading wings, isolated on dark background, centered, game boss sprite', 'landscape_4_3'),
-  },
-};
-
-const IMG = {};        // 已创建的 Image 对象，按 'bg_asteroid' / 'enemy_miner' / 'boss_1' 等键存取
-const IMG_READY = {};  // 加载成功标志
-let imgLoaded = 0, imgTotal = 0, imgStarted = false;
-
-function preloadImages(onDone){
-  if(imgStarted) return;
-  imgStarted = true;
-  const list = [];
-  for(const cat of Object.keys(TEXTURES)){
-    for(const k of Object.keys(TEXTURES[cat])){
-      list.push([cat + '_' + k, TEXTURES[cat][k]]);
-    }
-  }
-  imgTotal = list.length;
-  if(imgTotal === 0 || typeof Image === 'undefined'){
-    imgLoaded = imgTotal;
-    onDone && onDone();
-    return;
-  }
-  // 兜底超时：25 秒后无论如何都进入标题画面，未就绪的贴图自动回退矢量
-  const fallback = setTimeout(()=>{ if(imgLoaded < imgTotal){ imgLoaded = imgTotal; onDone && onDone(); } }, 25000);
-  for(const [key, url] of list){
-    const img = new Image();
-    // 不设置 crossOrigin：贴图 API 会 301 重定向到 pexels 等图床，
-    // 这些图床不返回 CORS 头，设置 crossOrigin 会导致加载失败。
-    // 我们仅用 drawImage 绘制贴图（不读取像素），无需 CORS。
-    const finish = (ok)=>{
-      IMG_READY[key] = ok;
-      imgLoaded++;
-      if(imgLoaded >= imgTotal){ clearTimeout(fallback); onDone && onDone(); }
-    };
-    img.onload = ()=>finish(true);
-    img.onerror = ()=>finish(false);
-    img.src = url;
-    IMG[key] = img;
-  }
-}
-function imgReady(key){ return !!IMG_READY[key] && IMG[key] && IMG[key].complete && IMG[key].naturalWidth > 0; }
-
 /* ------------------------------ 输入 ------------------------------ */
 const Input = {
   keys:{}, pressed:{},
@@ -214,28 +136,40 @@ class Particle{
   }
   draw(ctx,camX){
     const a=clamp(this.life/this.maxLife,0,1);
-    ctx.globalAlpha=a; ctx.fillStyle=this.color;
     const s=this.size*a;
-    ctx.fillRect(this.x-camX-s/2,this.y-s/2,s,s);
-    ctx.globalAlpha=1;
+    // 发光粒子：外晕 + 内核
+    ctx.globalAlpha=a*0.55;
+    ctx.fillStyle=this.color;
+    ctx.shadowBlur=8; ctx.shadowColor=this.color;
+    ctx.beginPath(); ctx.arc(this.x-camX, this.y, s*1.6, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha=a;
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(this.x-camX, this.y, s*0.55, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur=0; ctx.globalAlpha=1;
   }
 }
 function spawnExplosion(particles,x,y,color,count=14,power=1){
+  // 双色：主色 + 高亮白核
   for(let i=0;i<count;i++){
     const ang=rand(0,Math.PI*2), sp=rand(40,220)*power;
-    particles.push(new Particle(x,y,Math.cos(ang)*sp,Math.sin(ang)*sp,rand(0.3,0.7),color,rand(2,5)));
+    particles.push(new Particle(x,y,Math.cos(ang)*sp,Math.sin(ang)*sp,rand(0.3,0.8),color,rand(2,5)));
+  }
+  // 少量白色亮核粒子，让爆炸更有冲击感
+  for(let i=0;i<Math.max(3,Math.floor(count*0.3));i++){
+    const ang=rand(0,Math.PI*2), sp=rand(60,260)*power;
+    particles.push(new Particle(x,y,Math.cos(ang)*sp,Math.sin(ang)*sp,rand(0.15,0.4),'#ffffff',rand(1.5,3)));
   }
   while(particles.length>CFG.maxParticles) particles.shift();
 }
 
 /* ------------------------------ 背景视差 ------------------------------ */
 class Starfield{
-  constructor(theme){ this.theme=theme||'space'; this.setTheme(this.theme); this.layers=this.genLayers(); }
+  constructor(theme){ this.theme=theme||'space'; this.setTheme(this.theme); this.layers=this.genLayers(); this.t=0; this._scanY=rand(0,H); }
   genLayers(){
     return [
-      {stars:this.gen(60),speed:18,size:1,color:'#334'},
-      {stars:this.gen(45),speed:50,size:1.5,color:'#778'},
-      {stars:this.gen(30),speed:110,size:2,color:'#bbf'},
+      {stars:this.gen(70),speed:18,size:1,color:'#334'},
+      {stars:this.gen(50),speed:50,size:1.5,color:'#778'},
+      {stars:this.gen(30),speed:110,size:2,color:'#bbf',bright:true},
     ];
   }
   gen(n){ const a=[]; for(let i=0;i<n;i++) a.push({x:rand(0,W),y:rand(0,H)}); return a; }
@@ -266,6 +200,8 @@ class Starfield{
     return {nebula:neb};
   }
   update(dt,scrollSpeed){
+    this.t += dt;
+    this._scanY = (this._scanY + dt*60) % (H+80);
     for(const L of this.layers){
       const sp=(L.speed/110)*scrollSpeed;
       for(const s of L.stars){ s.x-=sp*dt; if(s.x<0){ s.x=W; s.y=rand(0,H); } }
@@ -284,39 +220,20 @@ class Starfield{
       }
     }
   }
-  draw(ctx, camX){
-    camX = camX || 0;
-    const bgKey = 'bg_' + this.theme;
-    if(imgReady(bgKey)){
-      // 贴图背景：按高度铺满，水平平铺，视差滚动（比前景慢）
-      const img = IMG[bgKey];
-      const scale = H / img.height;
-      const iw = img.width * scale;
-      const parallax = 0.4;
-      let off = -((camX * parallax) % iw);
-      if(off > 0) off -= iw;
-      for(let x = off - iw; x < W; x += iw){
-        ctx.drawImage(img, x, 0, iw, H);
-      }
-      // 轻微暗角，让前景元素更突出
-      const vg = ctx.createLinearGradient(0,0,0,H);
-      vg.addColorStop(0,'rgba(0,0,0,0.35)'); vg.addColorStop(0.5,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.35)');
-      ctx.fillStyle = vg; ctx.fillRect(0,0,W,H);
-    } else {
-      // 回退：渐变背景
-      const g=ctx.createLinearGradient(0,0,0,H);
-      if(this.theme==='fortress'){ g.addColorStop(0,'#0a0a14'); g.addColorStop(1,'#140a1a'); }
-      else if(this.theme==='core'){ g.addColorStop(0,'#0a0510'); g.addColorStop(0.5,'#1a0820'); g.addColorStop(1,'#050208'); }
-      else if(this.theme==='fire'){ g.addColorStop(0,'#1a0500'); g.addColorStop(0.5,'#2a0a04'); g.addColorStop(1,'#0a0202'); }
-      else { g.addColorStop(0,'#05060f'); g.addColorStop(0.5,'#08081a'); g.addColorStop(1,'#04050c'); }
-      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-      if(this.themeObj.nebula){
-        for(const n of this.themeObj.nebula){
-          const rg=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r);
-          rg.addColorStop(0,n.c+'55'); rg.addColorStop(1,'transparent');
-          ctx.fillStyle=rg;
-          ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2); ctx.fill();
-        }
+  draw(ctx){
+    const g=ctx.createLinearGradient(0,0,0,H);
+    if(this.theme==='fortress'){ g.addColorStop(0,'#0a0a14'); g.addColorStop(1,'#140a1a'); }
+    else if(this.theme==='core'){ g.addColorStop(0,'#0a0510'); g.addColorStop(0.5,'#1a0820'); g.addColorStop(1,'#050208'); }
+    else if(this.theme==='fire'){ g.addColorStop(0,'#1a0500'); g.addColorStop(0.5,'#2a0a04'); g.addColorStop(1,'#0a0202'); }
+    else { g.addColorStop(0,'#05060f'); g.addColorStop(0.5,'#08081a'); g.addColorStop(1,'#04050c'); }
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    if(this.themeObj.nebula){
+      const pulse=0.7+Math.sin(this.t*0.6)*0.3;
+      for(const n of this.themeObj.nebula){
+        const rg=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r);
+        rg.addColorStop(0,n.c+Math.floor(0x55*pulse).toString(16).padStart(2,'0')); rg.addColorStop(1,'transparent');
+        ctx.fillStyle=rg;
+        ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2); ctx.fill();
       }
     }
     if(this.themeObj.pipes){
@@ -335,10 +252,33 @@ class Starfield{
       }
       ctx.shadowBlur=0;
     }
+    // 星点：远景暗淡 + 近景亮星带十字光
+    const twinkle=0.7+Math.sin(this.t*3)*0.3;
     for(const L of this.layers){
       ctx.fillStyle=L.color;
-      for(const s of L.stars) ctx.fillRect(s.x,s.y,L.size,L.size);
+      if(L.bright){
+        ctx.shadowBlur=6; ctx.shadowColor=L.color;
+      }
+      for(const s of L.stars){
+        ctx.fillRect(s.x,s.y,L.size,L.size);
+        if(L.bright){
+          // 十字星芒
+          ctx.globalAlpha=0.5*twinkle;
+          ctx.fillRect(s.x-L.size*2, s.y+L.size/2-L.size*0.1, L.size*5, L.size*0.2);
+          ctx.fillRect(s.x+L.size/2-L.size*0.1, s.y-L.size*2, L.size*0.2, L.size*5);
+          ctx.globalAlpha=1;
+        }
+      }
+      if(L.bright){ ctx.shadowBlur=0; }
     }
+    // 流动扫描线（细微动感）
+    ctx.globalAlpha=0.06; ctx.fillStyle='#bffcff';
+    ctx.fillRect(0, this._scanY, W, 2);
+    ctx.globalAlpha=1;
+    // 暗角：让前景元素更突出
+    const vg=ctx.createLinearGradient(0,0,0,H);
+    vg.addColorStop(0,'rgba(0,0,0,0.4)'); vg.addColorStop(0.5,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.4)');
+    ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
   }
 }
 
@@ -356,7 +296,8 @@ class Bullet{
     this.target=opts.target||null;
     this.hits=new Set();
     this.dead=false;
-    this.life=opts.life||3;
+    // 敌方子弹默认给足寿命：让屏幕边界负责回收，避免远距离弹道半途消失
+    this.life=opts.life!==undefined?opts.life:(opts.friendly!==false?3:8);
     this.angle=opts.angle||0;
   }
   update(dt, game){
@@ -415,9 +356,13 @@ class Bullet{
       ctx.shadowBlur=8; ctx.shadowColor=this.color;
       ctx.fillRect(sx-this.w/2,this.y-this.h/2,this.w,this.h);
     } else {
+      // 敌弹：发光外晕 + 内核
       ctx.fillStyle=this.color;
-      ctx.shadowBlur=6; ctx.shadowColor=this.color;
+      ctx.shadowBlur=8; ctx.shadowColor=this.color;
       ctx.beginPath(); ctx.arc(sx,this.y,this.w/2,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.fillStyle='rgba(255,255,255,0.85)';
+      ctx.beginPath(); ctx.arc(sx,this.y,this.w/4,0,Math.PI*2); ctx.fill();
     }
     ctx.restore();
   }
@@ -983,15 +928,28 @@ class Player{
     ctx.save();
     ctx.translate(sx,this.y);
     const flame=10+Math.sin(this.engineFlick)*5;
+    // 双层尾焰：外焰发光黄橙 + 内核白蓝
     for(const oy of [-5,5]){
+      ctx.shadowBlur=10; ctx.shadowColor='#ff9a3c';
       const fg=ctx.createLinearGradient(-22-flame,0,-16,0);
       fg.addColorStop(0,'rgba(255,150,60,0)');
-      fg.addColorStop(1,'#ffd24d');
+      fg.addColorStop(0.6,'#ffd24d');
+      fg.addColorStop(1,'#ff7a1a');
       ctx.fillStyle=fg;
       ctx.beginPath();
       ctx.moveTo(-16,oy-3); ctx.lineTo(-22-flame,oy); ctx.lineTo(-16,oy+3);
       ctx.closePath(); ctx.fill();
+      // 内核
+      ctx.shadowBlur=0;
+      const fg2=ctx.createLinearGradient(-18-flame*0.5,0,-16,0);
+      fg2.addColorStop(0,'rgba(180,240,255,0)');
+      fg2.addColorStop(1,'#ffffff');
+      ctx.fillStyle=fg2;
+      ctx.beginPath();
+      ctx.moveTo(-16,oy-1.5); ctx.lineTo(-19-flame*0.5,oy); ctx.lineTo(-16,oy+1.5);
+      ctx.closePath(); ctx.fill();
     }
+    ctx.shadowBlur=0;
     ctx.shadowBlur=12; ctx.shadowColor=COLORS.player;
     const bg=ctx.createLinearGradient(0,-12,0,12);
     bg.addColorStop(0,'#7ffaff'); bg.addColorStop(0.5,COLORS.player); bg.addColorStop(1,'#1a8aa0');
@@ -1185,20 +1143,6 @@ class Enemy{
     ctx.save();
     ctx.translate(sx,this.y);
     const flash=this.hitFlash>0;
-    // 贴图优先：若对应敌人贴图已就绪则直接绘制，未就绪回退矢量
-    const texKey='enemy_'+this.type;
-    if(imgReady(texKey)){
-      if(this.ang!==undefined) ctx.rotate(this.ang);
-      ctx.drawImage(IMG[texKey], -this.w/2, -this.h/2, this.w, this.h);
-      if(flash){
-        ctx.globalCompositeOperation='source-atop';
-        ctx.fillStyle='rgba(255,255,255,0.75)';
-        ctx.fillRect(-this.w/2, -this.h/2, this.w, this.h);
-        ctx.globalCompositeOperation='source-over';
-      }
-      ctx.restore();
-      return;
-    }
     const main=flash?'#fff':this.color();
     ctx.shadowBlur=8; ctx.shadowColor=main;
     switch(this.type){
@@ -1404,28 +1348,14 @@ class Boss{
     ctx.save();
     ctx.translate(sx,this.y);
     const flash=this.hitFlash>0;
-    // 贴图优先：Boss 贴图就绪则直接绘制，未就绪回退矢量
-    const texKey='boss_'+this.type;
-    if(imgReady(texKey)){
-      const img=IMG[texKey];
-      ctx.shadowBlur=18; ctx.shadowColor=this.bossColor();
-      ctx.drawImage(img, -this.w/2, -this.h/2, this.w, this.h);
-      ctx.shadowBlur=0;
-      if(flash){
-        ctx.globalCompositeOperation='source-atop';
-        ctx.fillStyle='rgba(255,255,255,0.7)';
-        ctx.fillRect(-this.w/2, -this.h/2, this.w, this.h);
-        ctx.globalCompositeOperation='source-over';
-      }
-      // 核心/弱点光点（保留一点动态）
-      const pulse=1+Math.sin(this.t*8)*0.3;
-      ctx.shadowBlur=22; ctx.shadowColor='#fff';
-      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,0,10*pulse,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle=this.bossColor(); ctx.beginPath(); ctx.arc(0,0,6*pulse,0,Math.PI*2); ctx.fill();
-      ctx.shadowBlur=0;
-      ctx.restore();
-      return;
-    }
+    // 背景光晕：让 boss 看起来更有威慑感
+    const auraPulse=1+Math.sin(this.t*2)*0.15;
+    const aura=ctx.createRadialGradient(0,0,0,0,0,140*auraPulse);
+    aura.addColorStop(0,'rgba(255,255,255,0.15)');
+    aura.addColorStop(0.5,this.bossColor()+'40');
+    aura.addColorStop(1,'transparent');
+    ctx.fillStyle=aura;
+    ctx.beginPath(); ctx.arc(0,0,140*auraPulse,0,Math.PI*2); ctx.fill();
     ctx.shadowBlur=18; ctx.shadowColor=this.bossColor();
     if(this.type===1){
       const r=80;
@@ -1571,11 +1501,10 @@ const LEVELS=[
 /* ------------------------------ 主游戏 ------------------------------ */
 class Game{
   constructor(){
-    this.state='LOADING';
+    this.state='TITLE';
     this.starfield=new Starfield('space');
     this.titleSelected=0; // 选关：当前选中关卡索引（-1=从头开始，0-3=对应关卡）
     this.reset();
-    preloadImages(()=>{ this.state='TITLE'; });
   }
   reset(){
     this.player=new Player(this);
@@ -1625,11 +1554,6 @@ class Game{
     const bgSpeed=(this.state==='PLAYING'||this.state==='BOSS')?this.level.scrollSpeed:40;
     this.starfield.update(dt,bgSpeed);
 
-    if(this.state==='LOADING'){
-      // 加载中：按回车可随时跳过，未就绪贴图自动回退矢量
-      if(Input.justPressed('enter')){ this.state='TITLE'; }
-      return;
-    }
     if(this.state==='TITLE'){
       // 选关：上/下切换，回车开始选中关卡
       if(Input.justPressed('arrowup','w')){ this.titleSelected = (this.titleSelected - 1 + (LEVELS.length+1)) % (LEVELS.length+1); Audio2.hit(); }
@@ -1682,6 +1606,14 @@ class Game{
     if(this.boss){
       this.boss.update(dt);
       if(this.boss.dead){
+        // Boss 死亡瞬间清屏：清空敌方子弹、残留小怪与障碍，防止死后中弹
+        this.bullets=this.bullets.filter(b=>b.friendly);
+        this.enemies=[];
+        this.obstacles=[];
+        // 转化玩家误伤弹道为粒子，营造爆炸冲击
+        spawnExplosion(this.particles, this.boss.x, this.boss.y, '#ffd24d', 40, 2.2);
+        spawnExplosion(this.particles, this.boss.x, this.boss.y, '#ff5a1a', 30, 1.8);
+        this.shake=1.0; this.flash=0.6;
         this.boss=null;
         if(this.levelIndex<LEVELS.length-1){
           // 进入过关过渡：飞机飞出右端
@@ -1843,8 +1775,8 @@ class Game{
     const shakeY=this.shake>0?rand(-6,6)*this.shake:0;
     CTX.save();
     CTX.translate(shakeX,shakeY);
-    this.starfield.draw(CTX, this.camX);
-    if(this.state!=='TITLE' && this.state!=='LOADING'){
+    this.starfield.draw(CTX);
+    if(this.state!=='TITLE'){
       for(const c of this.crystals) c.draw(CTX,this.camX);
       for(const l of this.lifeDrops) l.draw(CTX,this.camX);
       for(const o of this.obstacles) o.draw(CTX,this.camX);
@@ -1858,8 +1790,7 @@ class Game{
     if(this.flash>0){ CTX.fillStyle='rgba(255,255,255,'+clamp(this.flash,0,0.8)+')'; CTX.fillRect(0,0,W,H); }
     CTX.restore();
 
-    if(this.state==='LOADING') this.drawLoading();
-    else if(this.state==='TITLE') this.drawTitle();
+    if(this.state==='TITLE') this.drawTitle();
     else if(this.state==='PAUSED') this.drawPaused();
     else if(this.state==='GAME_OVER') this.drawGameOver();
     else if(this.state==='WIN') this.drawWin();
@@ -1961,30 +1892,6 @@ class Game{
     CTX.fillStyle='#fff';
     CTX.shadowBlur=12; CTX.shadowColor=COLORS.player;
     CTX.fillText(this.toastText, W/2, H/2-90);
-    CTX.restore();
-  }
-  drawLoading(){
-    CTX.save();
-    CTX.fillStyle='rgba(0,0,0,0.7)'; CTX.fillRect(0,0,W,H);
-    CTX.textAlign='center'; CTX.textBaseline='middle';
-    const g=CTX.createLinearGradient(0,H/2-60,0,H/2-20);
-    g.addColorStop(0,'#5ef7ff'); g.addColorStop(1,'#ff4d8d');
-    CTX.fillStyle=g; CTX.font='bold 52px monospace';
-    CTX.shadowBlur=18; CTX.shadowColor='#5ef7ff';
-    CTX.fillText('LOADING', W/2, H/2-40);
-    CTX.shadowBlur=0;
-    // 进度条
-    const pct = imgTotal>0 ? Math.min(1, imgLoaded/imgTotal) : 0;
-    const bw=420, bh=14, bx=W/2-bw/2, by=H/2+10;
-    CTX.fillStyle='rgba(255,255,255,0.15)'; CTX.fillRect(bx,by,bw,bh);
-    CTX.fillStyle='#5ef7ff'; CTX.fillRect(bx,by,bw*pct,bh);
-    CTX.strokeStyle='rgba(255,255,255,0.4)'; CTX.lineWidth=1; CTX.strokeRect(bx,by,bw,bh);
-    CTX.fillStyle='#9ef'; CTX.font='16px monospace';
-    CTX.fillText(Math.floor(pct*100)+'%   '+imgLoaded+'/'+imgTotal+' 贴图', W/2, by+38);
-    if(Math.floor(performance.now()/500)%2===0){
-      CTX.fillStyle='#ffd24d'; CTX.font='bold 18px monospace';
-      CTX.fillText(imgLoaded>=imgTotal ? '按 回车 进入游戏' : '按 回车 跳过加载', W/2, H-60);
-    }
     CTX.restore();
   }
   drawTitle(){
