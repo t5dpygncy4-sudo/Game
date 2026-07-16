@@ -344,6 +344,7 @@ class Bullet{
     this.laser=opts.laser||false;
     this.missile=opts.missile||false;
     this.corrosive=opts.corrosive||false;   // 腐蚀液：受重力下沉
+    this.bossLaser=opts.bossLaser||false;   // Boss 激光子弹：命中扣 2 滴血
     this.target=opts.target||null;
     this.hits=new Set();
     this.dead=false;
@@ -825,8 +826,12 @@ class Wingman{
   fireSpread(){
     const g=this.player.game;
     const sp=CFG.bulletSpeed;
-    // 弱化版散弹：3 路扇形（主炮是 5 路 [-0.36,-0.18,0,0.18,0.36]）
-    const angles=[0,-0.18,0.18];
+    // 弱化版散弹：比主炮少 2 路（主炮 1级3 / 2级5 / 3级7，僚机 1路/3路/5路）
+    const lv=this.player.spreadLevel;
+    let angles;
+    if(lv>=3){ angles=[0,-0.18,0.18,-0.32,0.32]; }       // 主炮7路→僚机5路
+    else if(lv===2){ angles=[0,-0.18,0.18]; }              // 主炮5路→僚机3路
+    else { angles=[0]; }                                   // 主炮3路→僚机1路
     for(const a of angles){
       g.addBullet(new Bullet(this.x+12,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:5,h:5,dmg:1,color:COLORS.bullet,friendly:true}));
@@ -838,8 +843,11 @@ class Wingman{
     const beamY=this.y;
     const startX=this.x+12;
     const endX=g.camX+W;
-    const halfH=5;              // 比主激光(9)窄
-    const dps=4;                // 比主激光(10)弱
+    const lv=this.player.laserLevel;
+    // 僚机是主激光的弱化版：halfH 和 dps 都是主激光的 ~60%
+    const halfH=4 + lv*1.2;       // 比主激光窄
+    const dps=this.player.laserDps()*0.4;   // 主激光的 40% 伤害
+    const col=this.player.laserColor();
     const dmg=dps*dt;
     for(const e of g.enemies){
       if(e.dead) continue;
@@ -848,6 +856,7 @@ class Wingman{
       const eb=e.bounds();
       if(eb.y <= beamY+halfH && eb.y+eb.h >= beamY-halfH){
         e.takeDamage(dmg);
+        if(Math.random()<0.25){ spawnExplosion(g.particles, e.x, beamY, col, 2, 0.4); }
       }
     }
     if(g.boss && !g.boss.dead){
@@ -865,15 +874,17 @@ class Wingman{
     const sxStart=this.x+12-camX;
     const sxEnd=W;
     const beamY=this.y;
+    const lv=this.player.laserLevel;
+    const col=this.player.laserColor();
     const pulse=1+Math.sin(this.laserT*16)*0.18;
-    const halfW=4*pulse;            // 比主激光(7)窄
+    const halfW=(3 + lv)*pulse;            // 比主激光窄
     ctx.save();
     // 外光晕
-    ctx.shadowBlur=14; ctx.shadowColor=COLORS.laser;
+    ctx.shadowBlur=10 + lv*4; ctx.shadowColor=col;
     const g=ctx.createLinearGradient(sxStart,0,sxEnd,0);
-    g.addColorStop(0, COLORS.laser);
-    g.addColorStop(0.3, 'rgba(255,77,141,0.7)');
-    g.addColorStop(1, 'rgba(255,77,141,0.1)');
+    g.addColorStop(0, col);
+    g.addColorStop(0.3, col+'b3');   // ~70%
+    g.addColorStop(1, col+'1a');     // ~10%
     ctx.fillStyle=g;
     ctx.fillRect(sxStart, beamY-halfW, sxEnd-sxStart, halfW*2);
     // 内核白色亮线
@@ -908,8 +919,8 @@ class Wingman{
 const UPGRADES = [
   { key:'1', id:'speed',  cost:1, name:'加速',   desc:'移动速度提升' },
   { key:'2', id:'missile',cost:2, name:'追踪弹', desc:'每秒发射2枚追踪导弹' },
-  { key:'3', id:'spread', cost:3, name:'散弹',   desc:'5路扇形散射' },
-  { key:'4', id:'laser',  cost:4, name:'激光',   desc:'穿透激光(与散弹互斥)' },
+  { key:'3', id:'spread', cost:3, name:'散弹',   desc:'扇形散射(3级:3/5/7路)' },
+  { key:'4', id:'laser',  cost:4, name:'激光',   desc:'持续激光(3级:蓝/橙/红,与散弹互斥)' },
   { key:'5', id:'wingman',cost:5, name:'僚机',   desc:'增加1个僚机(最多3)' },
   { key:'6', id:'shield', cost:6, name:'护盾',   desc:'2次护盾抵挡(黄色,不可叠加)' },
 ];
@@ -920,11 +931,13 @@ class Player{
     this.x=160; this.y=H/2;
     this.vx=0; this.vy=0;
     this.w=38; this.h=24;
-    this.lives=3;
+    this.lives=5;               // 初始 5 滴血，上限 5
     this.crystals=0;           // 持有能量晶体（上限10）
     this.abilities=new Set();  // 已解锁能力
     this.speedLevel=0;         // 加速等级 0-3
     this.missileLevel=0;       // 追踪导弹等级 0-3
+    this.spreadLevel=0;        // 散弹等级 0-3（0=未解锁，1=3颗 2=5颗 3=7颗）
+    this.laserLevel=0;         // 激光等级 0-3（0=未解锁，1=蓝 2=橙 3=红）
     this.fireTimer=0;
     this.missileTimer=1.0;
     this.invincible=0;
@@ -969,16 +982,40 @@ class Player{
       spawnExplosion(this.game.particles,this.x,this.y,COLORS.missile,20,1.2);
       return;
     }
-    // 僚机/护盾可重复购买，其它一次性
+    // 散弹：3级可重复升级（1级3颗 2级5颗 3级7颗）
+    if(up.id==='spread'){
+      if(this.spreadLevel>=3){ this.game.toast('散弹已满级 3/3'); return; }
+      this.crystals -= up.cost;
+      this.spreadLevel++;
+      Audio2.levelup();
+      // 互斥：升级散弹时关闭激光
+      if(this.laserLevel>0){ this.laserLevel=0; this.abilities.delete('laser'); this.game.toast('激光 → 散弹'); }
+      this.abilities.add('spread');
+      this.game.toast('散弹 Lv'+this.spreadLevel+'/3 ('+(this.spreadLevel===1?3:this.spreadLevel===2?5:7)+'路, -'+up.cost+'能量)');
+      spawnExplosion(this.game.particles,this.x,this.y,COLORS.bullet,20,1.2);
+      return;
+    }
+    // 激光：3级可重复升级（1级蓝 2级橙 3级红）
+    if(up.id==='laser'){
+      if(this.laserLevel>=3){ this.game.toast('激光已满级 3/3'); return; }
+      this.crystals -= up.cost;
+      this.laserLevel++;
+      Audio2.levelup();
+      // 互斥：升级激光时关闭散弹
+      if(this.spreadLevel>0){ this.spreadLevel=0; this.abilities.delete('spread'); this.game.toast('散弹 → 激光'); }
+      this.abilities.add('laser');
+      const cn=this.laserLevel===1?'蓝':this.laserLevel===2?'橙':'红';
+      this.game.toast('激光 Lv'+this.laserLevel+'/3 ('+cn+'色, -'+up.cost+'能量)');
+      spawnExplosion(this.game.particles,this.x,this.y,COLORS.laser,20,1.2);
+      return;
+    }
+    // 僚机/护盾可重复购买
     if(up.id!=='wingman' && up.id!=='shield' && this.abilities.has(up.id)){
       this.game.toast(up.name+' 已解锁');
       return;
     }
     this.crystals -= up.cost;
     Audio2.levelup();
-    // 3、4级互斥
-    if(up.id==='spread' && this.abilities.has('laser')){ this.abilities.delete('laser'); this.game.toast('激光 → 散弹'); }
-    else if(up.id==='laser' && this.abilities.has('spread')){ this.abilities.delete('spread'); this.game.toast('散弹 → 激光'); }
     this.abilities.add(up.id);
     if(up.id==='wingman'){
       if(this.wingmen.length>=3){ this.game.toast('僚机已满 3/3'); this.crystals+=up.cost; return; }
@@ -1060,7 +1097,11 @@ class Player{
     if(this.hasCannon){
       this.fireTimer=CFG.fireCooldown;
       const sp=CFG.bulletSpeed;
-      const angles=[0,-0.18,0.18,-0.36,0.36];
+      // 散弹等级：1级3颗 2级5颗 3级7颗
+      let angles;
+      if(this.spreadLevel>=3){ angles=[0,-0.12,0.12,-0.24,0.24,-0.36,0.36]; }       // 7 路
+      else if(this.spreadLevel===2){ angles=[0,-0.18,0.18,-0.36,0.36]; }              // 5 路
+      else { angles=[0,-0.20,0.20]; }                                                 // 3 路
       for(const a of angles){
         g.addBullet(new Bullet(sx,sy,Math.cos(a)*sp,Math.sin(a)*sp,
           {w:6,h:6,dmg:1,color:COLORS.bullet,friendly:true}));
@@ -1071,14 +1112,28 @@ class Player{
       g.addBullet(new Bullet(sx,sy,sp,0,{w:7,h:7,dmg:1,color:COLORS.bullet,friendly:true}));
     }
   }
+  // 激光等级颜色：1级蓝 2级橙 3级红
+  laserColor(){
+    if(this.laserLevel===1) return '#4db4ff';   // 蓝
+    if(this.laserLevel===2) return '#ff9a3c';   // 橙
+    return '#ff3a3a';                            // 红
+  }
+  // 激光等级伤害（dps）：1级 10 2级 18 3级 28
+  laserDps(){
+    if(this.laserLevel===1) return 10;
+    if(this.laserLevel===2) return 18;
+    return 28;
+  }
   // 持续激光：每帧扫描光束路径上的目标并造成持续伤害
   updateLaser(dt){
     const g=this.game;
     const beamY=this.y;
     const startX=this.x+20;
     const endX=g.camX+W;
-    const halfH=9;              // 光束判定宽度
-    const dps=10;               // 主激光伤害/秒
+    const lv=this.laserLevel;
+    const halfH=7 + lv*2;        // 等级越高光束越宽（1级9 2级11 3级13）
+    const dps=this.laserDps();
+    const col=this.laserColor();
     const dmg=dps*dt;
     for(const e of g.enemies){
       if(e.dead) continue;
@@ -1088,7 +1143,7 @@ class Player{
       if(eb.y <= beamY+halfH && eb.y+eb.h >= beamY-halfH){
         e.takeDamage(dmg);
         if(Math.random()<0.35){
-          spawnExplosion(g.particles, e.x, beamY, COLORS.laser, 2, 0.5);
+          spawnExplosion(g.particles, e.x, beamY, col, 2, 0.5);
         }
       }
     }
@@ -1098,7 +1153,7 @@ class Player{
         if(bb.y <= beamY+halfH && bb.y+bb.h >= beamY-halfH){
           g.boss.takeDamage(dmg, true); // 激光算核心弱点伤害
           if(Math.random()<0.4){
-            spawnExplosion(g.particles, g.boss.x-30, beamY, COLORS.laser, 3, 0.7);
+            spawnExplosion(g.particles, g.boss.x-30, beamY, col, 3, 0.7);
           }
         }
       }
@@ -1110,15 +1165,17 @@ class Player{
     const sxStart=this.x+20-camX;
     const sxEnd=W;                          // 到屏幕右端
     const beamY=this.y;
+    const lv=this.laserLevel;
+    const col=this.laserColor();
     const pulse=1+Math.sin(this.laserT*16)*0.18;
-    const halfW=7*pulse;
+    const halfW=(6 + lv)*pulse;   // 等级越高越宽（1级7 2级8 3级9）
     ctx.save();
     // 外光晕
-    ctx.shadowBlur=22; ctx.shadowColor=COLORS.laser;
+    ctx.shadowBlur=18 + lv*6; ctx.shadowColor=col;
     const g=ctx.createLinearGradient(sxStart,0,sxEnd,0);
-    g.addColorStop(0, COLORS.laser);
-    g.addColorStop(0.3, 'rgba(255,77,141,0.85)');
-    g.addColorStop(1, 'rgba(255,77,141,0.15)');
+    g.addColorStop(0, col);
+    g.addColorStop(0.3, col+'d9');   // ~85% 透明度
+    g.addColorStop(1, col+'26');     // ~15% 透明度
     ctx.fillStyle=g;
     ctx.fillRect(sxStart, beamY-halfW, sxEnd-sxStart, halfW*2);
     // 内核白色亮线
@@ -1147,9 +1204,10 @@ class Player{
       g.addBullet(new Bullet(this.x,this.y+offset,sp,vy,{w:8,h:8,dmg:2,color:COLORS.missile,friendly:true,missile:true,target}));
     }
   }
-  hurt(){
+  hurt(dmg=1){
     if(this.invincible>0) return false;
     if(this.shieldHits>0){
+      // 护盾一次性吸收整发激光子弹（无论 dmg 多少），消耗 1 层护盾
       this.shieldHits--;
       this.shieldFlash=0.4;
       this.invincible=0.6;
@@ -1159,12 +1217,12 @@ class Player{
       else { this.game.toast('护盾抵挡 剩余 '+this.shieldHits+'/2'); }
       return true;
     }
-    this.lives--;
+    this.lives -= dmg;          // 支持 Boss 激光子弹等多次伤害（dmg=2 一次扣 2 滴血）
     this.invincible=CFG.invincibleTime;
     Audio2.hurt(); Audio2.explode();
     spawnExplosion(this.game.particles,this.x,this.y,COLORS.player,30,1.5);
     this.game.shake=0.4;
-    if(this.lives<=0){ this.alive=false; this.game.onPlayerDead(); }
+    if(this.lives<=0){ this.lives=0; this.alive=false; this.game.onPlayerDead(); }
     return true;
   }
   draw(ctx,camX){
@@ -1979,6 +2037,7 @@ class Boss{
     this.maxHp=hpMap[type]||140;
     this.hp=this.maxHp;
     this.phase=1; this.dirY=1; this.alarmPlayed=false;
+    this.laserBulletTimer=3.0;   // 首次激光子弹延迟
     this.w=220; this.h=140;
     if(type===1){ this.w=200; this.h=160; }
     else if(type===2){ this.w=220; this.h=140; }
@@ -2011,24 +2070,41 @@ class Boss{
         if(this.phase===1){ this.fireTimer=1.6; this.fireFan(3,0.3); }
         else if(this.phase===2){ this.fireTimer=1.2; this.fireFan(5,0.4); if(Math.random()<0.5) this.summonAsteroid(); }
         else { this.fireTimer=0.9; this.fireFan(6,0.5); this.summonAsteroid(); }
-      } else if(this.type===2){
-        if(this.phase===1){ this.fireTimer=1.0; this.fireAimed(2,0.1); }
-        else if(this.phase===2){ this.fireTimer=0.85; this.fireAimed(2,0.1); this.fireFan(6,0.35); }
-        else { this.fireTimer=0.7; this.fireSpiral(6); this.fireAimed(2,0.1); }
-      } else if(this.type===3){
-        if(this.phase===1){ this.fireTimer=0.8; this.fireSpiral(8); }
-        else if(this.phase===2){ this.fireTimer=0.7; this.fireSpiral(10); this.fireAimed(2,0.12); }
-        else { this.fireTimer=0.55; this.fireSpiral(12); this.fireAimed(3,0.1); if(Math.random()<0.4) this.fireFan(5,0.4); }
-      } else if(this.type===4){ // type 4 火龙：火球+扇形（发射频率降低50%）
-        if(this.phase===1){ this.fireTimer=2.0; this.fireFan(5,0.35); this.summonFireBall(); }
-        else if(this.phase===2){ this.fireTimer=1.6; this.fireFan(7,0.4); this.fireAimed(2,0.1); this.summonFireBall(); }
-        else { this.fireTimer=1.2; this.fireSpiral(8); this.fireFan(6,0.45); this.summonFireBall(); }
-      } else if(this.type===5){ // type 5 骷髅王：能量圈 + 腐蚀液 + 召唤变异体
-        if(this.phase===1){ this.fireTimer=2.2; this.fireRing(16,120); }
-        else if(this.phase===2){ this.fireTimer=1.8; this.fireRing(20,120); if(Math.random()<0.5) this.summonMutant(); }
-        else { this.fireTimer=1.4; this.fireRing(24,130); this.summonMutant(); if(Math.random()<0.4) this.fireCorrosiveFan(); }
+      } else if(this.type===2){   // boss2 难度上调：发弹更密
+        if(this.phase===1){ this.fireTimer=0.75; this.fireAimed(2,0.1); }
+        else if(this.phase===2){ this.fireTimer=0.6; this.fireAimed(2,0.1); this.fireFan(6,0.35); }
+        else { this.fireTimer=0.5; this.fireSpiral(7); this.fireAimed(2,0.1); }
+      } else if(this.type===3){   // boss3 难度上调
+        if(this.phase===1){ this.fireTimer=0.55; this.fireSpiral(8); }
+        else if(this.phase===2){ this.fireTimer=0.45; this.fireSpiral(10); this.fireAimed(2,0.12); }
+        else { this.fireTimer=0.35; this.fireSpiral(12); this.fireAimed(3,0.1); if(Math.random()<0.4) this.fireFan(5,0.4); }
+      } else if(this.type===4){   // boss4 火龙：发弹更密
+        if(this.phase===1){ this.fireTimer=1.4; this.fireFan(5,0.35); this.summonFireBall(); }
+        else if(this.phase===2){ this.fireTimer=1.1; this.fireFan(7,0.4); this.fireAimed(2,0.1); this.summonFireBall(); }
+        else { this.fireTimer=0.8; this.fireSpiral(8); this.fireFan(6,0.45); this.summonFireBall(); }
+      } else if(this.type===5){   // boss5 骷髅王：发弹更密
+        if(this.phase===1){ this.fireTimer=1.6; this.fireRing(16,120); }
+        else if(this.phase===2){ this.fireTimer=1.3; this.fireRing(20,120); if(Math.random()<0.5) this.summonMutant(); }
+        else { this.fireTimer=1.0; this.fireRing(24,130); this.summonMutant(); if(Math.random()<0.4) this.fireCorrosiveFan(); }
       }
     }
+    // Boss 激光子弹：周期性朝玩家发射，命中扣 2 滴血
+    if(this.type>=2){   // 2-5 关 Boss 才发射激光子弹
+      this.laserBulletTimer-=dt;
+      if(this.laserBulletTimer<=0){
+        this.laserBulletTimer = this.type===5?5.0:(this.type===4?6.0:7.0);
+        this.fireLaserBullet();
+      }
+    }
+  }
+  // Boss 激光子弹：朝玩家方向发射梯形激光，命中扣 2 滴血
+  fireLaserBullet(){
+    const p=this.game.player;
+    const sp=CFG.enemyBulletSpeed*1.4;     // 激光子弹更快
+    const dx=p.x-this.x, dy=p.y-this.y;
+    const m=Math.hypot(dx,dy)||1;
+    this.game.bullets.push(new Bullet(this.x-30,this.y,dx/m*sp,dy/m*sp,
+      {w:14,h:14,dmg:2,color:'#ff3a3a',friendly:false,laser:true,bossLaser:true}));
   }
   summonAsteroid(){
     this.game.enemies.push(new Enemy('asteroid_s', this.x-rand(20,80), this.y+rand(-60,60), this.game));
@@ -2595,7 +2671,12 @@ class Game{
     // 敌弹 vs 玩家
     for(const b of this.bullets){
       if(b.friendly||b.dead) continue;
-      if(aabb(pb,b.bounds())){ b.dead=true; if(p.hurt()) break; }
+      if(aabb(pb,b.bounds())){
+        b.dead=true;
+        // Boss 激光子弹一次扣 2 滴血；普通敌弹扣 1 滴
+        const dmg = b.bossLaser ? 2 : 1;
+        if(p.hurt(dmg)) break;
+      }
     }
     this.bullets=this.bullets.filter(b=>!b.dead);
     // 敌人 vs 玩家
