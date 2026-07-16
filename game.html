@@ -192,10 +192,15 @@ class Starfield{
       for(let i=0;i<6;i++) blobs.push({x:rand(0,W*2),y:rand(0,H),r:rand(120,240),sp:rand(10,30),c:choice(['#5a1a3a','#3a1a5a','#1a3a5a'])});
       return {nebula:blobs};
     }
-    if(t==='fire'){
-      const embers=[];
-      for(let i=0;i<40;i++) embers.push({x:rand(0,W),y:rand(0,H),r:rand(1,3),sp:rand(60,160),vy:rand(-30,-10)});
-      return {embers};
+    if(t==='starsea'){
+      // 星海：漫天白色星点 + 大颗近景亮星 + 淡白光雾
+      const stars=[];
+      for(let i=0;i<120;i++) stars.push({x:rand(0,W),y:rand(0,H),r:rand(0.6,2.2),sp:rand(20,70),tw:rand(0,Math.PI*2)});
+      const big=[];
+      for(let i=0;i<14;i++) big.push({x:rand(0,W),y:rand(0,H),r:rand(2.5,5),sp:rand(40,90),tw:rand(0,Math.PI*2)});
+      const mists=[];
+      for(let i=0;i<5;i++) mists.push({x:rand(0,W*2),y:rand(0,H),r:rand(160,280),sp:rand(8,18),phase:rand(0,Math.PI*2)});
+      return {stars,big,mists};
     }
     if(t==='tomb'){
       // β星人墓穴：墓碑 + 飘动绿幽魂 + 拱门
@@ -222,12 +227,11 @@ class Starfield{
     if(this.themeObj.pipes){
       for(const p of this.themeObj.pipes){ p.x-=p.sp*dt; if(p.x<-p.w){ p.x=p.gap; } }
     }
-    if(this.themeObj.embers){
-      for(const e of this.themeObj.embers){
-        e.x-=e.sp*dt; e.y+=e.vy*dt;
-        if(e.x<0){ e.x=W; e.y=rand(0,H); }
-        if(e.y<0){ e.y=H; }
-      }
+    if(this.themeObj.stars){
+      // 星海：星点横向流动 + 闪烁相位
+      for(const s of this.themeObj.stars){ s.x-=s.sp*dt; s.tw+=dt*3; if(s.x<-2){ s.x=W+2; s.y=rand(0,H); } }
+      for(const s of this.themeObj.big){ s.x-=s.sp*dt; s.tw+=dt*2; if(s.x<-6){ s.x=W+6; s.y=rand(0,H); } }
+      for(const m of this.themeObj.mists){ m.x-=m.sp*dt; m.phase+=dt*0.5; if(m.x<-m.r){ m.x=W+m.r; m.y=rand(0,H); } }
     }
     if(this.themeObj.tombs){
       for(const tb of this.themeObj.tombs){ tb.x-=tb.sp*dt; if(tb.x<-tb.w){ tb.x=W+tb.w; tb.y=rand(60,H-60); tb.w=rand(30,60); tb.h=rand(40,80); } }
@@ -244,7 +248,7 @@ class Starfield{
     const g=ctx.createLinearGradient(0,0,0,H);
     if(this.theme==='fortress'){ g.addColorStop(0,'#0a0a14'); g.addColorStop(1,'#140a1a'); }
     else if(this.theme==='core'){ g.addColorStop(0,'#0a0510'); g.addColorStop(0.5,'#1a0820'); g.addColorStop(1,'#050208'); }
-    else if(this.theme==='fire'){ g.addColorStop(0,'#1a0500'); g.addColorStop(0.5,'#2a0a04'); g.addColorStop(1,'#0a0202'); }
+    else if(this.theme==='starsea'){ g.addColorStop(0,'#0a0e1a'); g.addColorStop(0.5,'#0e1530'); g.addColorStop(1,'#06081a'); }
     else if(this.theme==='tomb'){ g.addColorStop(0,'#050a08'); g.addColorStop(0.5,'#0a1410'); g.addColorStop(1,'#020804'); }
     else { g.addColorStop(0,'#05060f'); g.addColorStop(0.5,'#08081a'); g.addColorStop(1,'#04050c'); }
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
@@ -265,13 +269,35 @@ class Starfield{
         ctx.fillRect(x+10,p.y+14,p.w-20,6);
       }
     }
-    if(this.themeObj.embers){
-      for(const e of this.themeObj.embers){
-        ctx.shadowBlur=8; ctx.shadowColor='#ff6a1a';
-        ctx.fillStyle=choice(['#ff9a3c','#ffd24d','#ff5a1a']);
-        ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill();
+    if(this.themeObj.stars){
+      // 星海：先铺一层淡白光雾，再画小星点，最后画大颗亮星 + 十字星芒
+      for(const m of this.themeObj.mists){
+        const a=0.05+Math.sin(m.phase)*0.03;
+        const rg=ctx.createRadialGradient(m.x,m.y,0,m.x,m.y,m.r);
+        rg.addColorStop(0,'rgba(220,235,255,'+a+')'); rg.addColorStop(1,'rgba(180,210,255,0)');
+        ctx.fillStyle=rg;
+        ctx.beginPath(); ctx.arc(m.x,m.y,m.r,0,Math.PI*2); ctx.fill();
       }
-      ctx.shadowBlur=0;
+      ctx.fillStyle='#dde6f5';
+      for(const s of this.themeObj.stars){
+        const a=0.4+Math.sin(s.tw)*0.4;
+        ctx.globalAlpha=a;
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha=1;
+      // 大颗亮星：白色 + 十字星芒
+      ctx.shadowBlur=10; ctx.shadowColor='#bcd5ff';
+      for(const s of this.themeObj.big){
+        const a=0.6+Math.sin(s.tw)*0.4;
+        ctx.globalAlpha=a;
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+        // 十字星芒
+        ctx.globalAlpha=a*0.5;
+        ctx.fillRect(s.x-s.r*2.5, s.y-0.4, s.r*5, 0.8);
+        ctx.fillRect(s.x-0.4, s.y-s.r*2.5, 0.8, s.r*5);
+      }
+      ctx.globalAlpha=1; ctx.shadowBlur=0;
     }
     if(this.themeObj.tombs){
       // 远景墓碑（带阴影渐变）
@@ -2067,43 +2093,50 @@ class Boss{
     this.fireTimer-=dt;
     if(this.fireTimer<=0){
       if(this.type===1){
-        if(this.phase===1){ this.fireTimer=1.6; this.fireFan(3,0.3); }
-        else if(this.phase===2){ this.fireTimer=1.2; this.fireFan(5,0.4); if(Math.random()<0.5) this.summonAsteroid(); }
-        else { this.fireTimer=0.9; this.fireFan(6,0.5); this.summonAsteroid(); }
-      } else if(this.type===2){   // boss2 难度上调：发弹更密
-        if(this.phase===1){ this.fireTimer=0.75; this.fireAimed(2,0.1); }
-        else if(this.phase===2){ this.fireTimer=0.6; this.fireAimed(2,0.1); this.fireFan(6,0.35); }
-        else { this.fireTimer=0.5; this.fireSpiral(7); this.fireAimed(2,0.1); }
-      } else if(this.type===3){   // boss3 难度上调
-        if(this.phase===1){ this.fireTimer=0.55; this.fireSpiral(8); }
-        else if(this.phase===2){ this.fireTimer=0.45; this.fireSpiral(10); this.fireAimed(2,0.12); }
-        else { this.fireTimer=0.35; this.fireSpiral(12); this.fireAimed(3,0.1); if(Math.random()<0.4) this.fireFan(5,0.4); }
-      } else if(this.type===4){   // boss4 火龙：发弹更密
-        if(this.phase===1){ this.fireTimer=1.4; this.fireFan(5,0.35); this.summonFireBall(); }
-        else if(this.phase===2){ this.fireTimer=1.1; this.fireFan(7,0.4); this.fireAimed(2,0.1); this.summonFireBall(); }
-        else { this.fireTimer=0.8; this.fireSpiral(8); this.fireFan(6,0.45); this.summonFireBall(); }
-      } else if(this.type===5){   // boss5 骷髅王：发弹更密
-        if(this.phase===1){ this.fireTimer=1.6; this.fireRing(16,120); }
-        else if(this.phase===2){ this.fireTimer=1.3; this.fireRing(20,120); if(Math.random()<0.5) this.summonMutant(); }
-        else { this.fireTimer=1.0; this.fireRing(24,130); this.summonMutant(); if(Math.random()<0.4) this.fireCorrosiveFan(); }
+        if(this.phase===1){ this.fireTimer=1.4; this.fireFan(4,0.3); }
+        else if(this.phase===2){ this.fireTimer=1.0; this.fireFan(6,0.35); if(Math.random()<0.5) this.summonAsteroid(); }
+        else { this.fireTimer=0.7; this.fireFan(7,0.4); this.fireBarrage(4,0.12); if(Math.random()<0.6) this.summonAsteroid(); }
+      } else if(this.type===2){   // boss2 弹幕：扇形 + 双臂螺旋 + 密集弹流
+        if(this.phase===1){ this.fireTimer=0.65; this.fireAimed(3,0.12); }
+        else if(this.phase===2){ this.fireTimer=0.5; this.fireSpiralMulti(2,5); this.fireAimed(2,0.1); }
+        else { this.fireTimer=0.4; this.fireSpiralMulti(2,7); this.fireBarrage(5,0.1); if(Math.random()<0.4) this.fireFan(6,0.35); }
+      } else if(this.type===3){   // boss3 弹幕：螺旋 + 放射圈交织
+        if(this.phase===1){ this.fireTimer=0.5; this.fireSpiral(10); }
+        else if(this.phase===2){ this.fireTimer=0.4; this.fireSpiral(12); this.fireBurst(10,150); }
+        else { this.fireTimer=0.3; this.fireSpiralMulti(3,5); this.fireBurst(14,170); if(Math.random()<0.5) this.fireBarrage(4,0.1); }
+      } else if(this.type===4){   // boss4 火龙：火球 + 弹幕交织
+        if(this.phase===1){ this.fireTimer=1.1; this.fireFan(6,0.32); this.summonFireBall(); }
+        else if(this.phase===2){ this.fireTimer=0.85; this.fireFan(8,0.35); this.fireBarrage(3,0.12); this.summonFireBall(); }
+        else { this.fireTimer=0.55; this.fireSpiral(10); this.fireFan(7,0.4); this.summonFireBall(); if(Math.random()<0.4) this.fireBurst(12,160); }
+      } else if(this.type===5){   // boss5 骷髅王：能量圈 + 双臂螺旋 + 腐蚀液
+        if(this.phase===1){ this.fireTimer=1.2; this.fireRing(18,130); }
+        else if(this.phase===2){ this.fireTimer=0.95; this.fireRing(22,130); this.fireSpiralMulti(2,4); if(Math.random()<0.5) this.summonMutant(); }
+        else { this.fireTimer=0.7; this.fireRing(26,140); this.fireSpiralMulti(3,5); this.summonMutant(); if(Math.random()<0.5) this.fireCorrosiveFan(); }
       }
     }
-    // Boss 激光子弹：周期性朝玩家发射，命中扣 2 滴血
-    if(this.type>=2){   // 2-5 关 Boss 才发射激光子弹
+    // Boss 激光子弹：周期性朝玩家发射，命中扣 2 滴血（2-5 关 Boss 才发射，频率更高）
+    if(this.type>=2){
       this.laserBulletTimer-=dt;
       if(this.laserBulletTimer<=0){
-        this.laserBulletTimer = this.type===5?5.0:(this.type===4?6.0:7.0);
+        this.laserBulletTimer = this.type===5?2.5:(this.type===4?3.0:3.5);
         this.fireLaserBullet();
+        // 阶段 3 时连发 2 颗（双管齐下）
+        if(this.phase===3){
+          this.fireLaserBullet(true);   // 偏移发射第二颗
+        }
       }
     }
   }
   // Boss 激光子弹：朝玩家方向发射梯形激光，命中扣 2 滴血
-  fireLaserBullet(){
+  fireLaserBullet(offset=false){
     const p=this.game.player;
     const sp=CFG.enemyBulletSpeed*1.4;     // 激光子弹更快
     const dx=p.x-this.x, dy=p.y-this.y;
     const m=Math.hypot(dx,dy)||1;
-    this.game.bullets.push(new Bullet(this.x-30,this.y,dx/m*sp,dy/m*sp,
+    // 第二颗偏移发射：与玩家方向偏 0.18 弧度，避开重合
+    const ang = offset ? Math.atan2(dy,dx)+0.18 : Math.atan2(dy,dx);
+    const vx=Math.cos(ang)*sp, vy=Math.sin(ang)*sp;
+    this.game.bullets.push(new Bullet(this.x-30,this.y,vx,vy,
       {w:14,h:14,dmg:2,color:'#ff3a3a',friendly:false,laser:true,bossLaser:true}));
   }
   summonAsteroid(){
@@ -2164,6 +2197,41 @@ class Boss{
       const a=(i/n)*Math.PI*2+off;
       this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:9,h:9,dmg:1,color:COLORS.boss5,friendly:false}));
+    }
+  }
+  // 弹幕：多臂螺旋（双臂/三臂同时旋转发射，形成交织弹幕）
+  fireSpiralMulti(arms, perArm, speed){
+    const sp=speed||CFG.enemyBulletSpeed*0.9;
+    const off=this.t*2.5;
+    for(let a=0;a<arms;a++){
+      const armOff=(a/arms)*Math.PI*2;
+      for(let i=0;i<perArm;i++){
+        const ang=armOff + (i/perArm)*Math.PI*0.6 + off;   // 每支臂扇形展开
+        this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(ang)*sp,Math.sin(ang)*sp,
+          {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
+      }
+    }
+  }
+  // 弹幕：朝玩家方向的密集弹流（带轻微扩散）
+  fireBarrage(n, spread, speed){
+    const p=this.game.player;
+    const sp=speed||CFG.enemyBulletSpeed*1.15;
+    const dx=p.x-this.x, dy=p.y-this.y;
+    const base=Math.atan2(dy,dx);
+    for(let i=0;i<n;i++){
+      const a=base+(i-(n-1)/2)*spread;
+      this.game.bullets.push(new Bullet(this.x-40,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
+    }
+  }
+  // 弹幕：高密度放射圈（比 fireRing 更密更快）
+  fireBurst(n, speed){
+    const sp=speed||CFG.enemyBulletSpeed*1.1;
+    const off=this.t*3;
+    for(let i=0;i<n;i++){
+      const a=(i/n)*Math.PI*2+off;
+      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:7,h:7,dmg:1,color:'#ff7a8a',friendly:false}));
     }
   }
   takeDamage(dmg,isCore){
@@ -2428,7 +2496,7 @@ const LEVELS=[
   { name:'第一关 · 陨石地带', theme:'asteroid', length:3200, scrollSpeed:95, spawnInterval:1.3, hpScale:1.0, bossType:1, obstacleType:'asteroid' },
   { name:'第二关 · 堡垒内部', theme:'fortress', length:3600, scrollSpeed:105, spawnInterval:1.1, hpScale:1.4, bossType:2, obstacleType:'fortress' },
   { name:'第三关 · 堡垒核心', theme:'core',     length:4000, scrollSpeed:115, spawnInterval:0.95, hpScale:1.9, bossType:3, obstacleType:'core' },
-  { name:'第四关 · 火海',     theme:'fire',     length:4400, scrollSpeed:125, spawnInterval:0.9,  hpScale:1.2, bossType:4, obstacleType:'fire' },
+  { name:'第四关 · 星海',     theme:'starsea',  length:4400, scrollSpeed:125, spawnInterval:0.9,  hpScale:1.2, bossType:4, obstacleType:'fire' },
   { name:'第五关 · β星人墓穴', theme:'tomb',    length:4800, scrollSpeed:130, spawnInterval:0.85, hpScale:1.6, bossType:5, obstacleType:'tomb' },
 ];
 
