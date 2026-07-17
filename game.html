@@ -203,6 +203,16 @@ class Starfield{
       for(let i=0;i<5;i++) mists.push({x:rand(0,W*2),y:rand(0,H),r:rand(160,280),sp:rand(8,18),phase:rand(0,Math.PI*2)});
       return {stars,big,mists};
     }
+    if(t==='fire'){
+      // 火海：远景火焰云团（橙红 radial）+ 上升的火星粒子 + 底部炽热光带
+      const clouds=[];
+      for(let i=0;i<8;i++) clouds.push({x:rand(0,W*2),y:rand(H*0.2,H*0.9),r:rand(120,260),sp:rand(15,40),phase:rand(0,Math.PI*2),c:choice(['#ff5a1a','#ff3a0a','#c0280a','#9a1a08'])});
+      const sparks=[];
+      for(let i=0;i<60;i++) sparks.push({x:rand(0,W),y:rand(0,H),sp:rand(30,90),r:rand(1,2.5),vy:rand(-70,-30),tw:rand(0,Math.PI*2)});
+      const embers=[];
+      for(let i=0;i<14;i++) embers.push({x:rand(0,W*2),y:rand(H*0.6,H),r:rand(2,4.5),sp:rand(40,100),phase:rand(0,Math.PI*2)});
+      return {clouds,sparks,embers};
+    }
     if(t==='tomb'){
       // β星人墓穴：墓碑 + 飘动绿幽魂 + 拱门
       const tombs=[];
@@ -244,6 +254,20 @@ class Starfield{
       for(const s of this.themeObj.big){ s.x-=s.sp*dt; s.tw+=dt*2; if(s.x<-6){ s.x=W+6; s.y=rand(0,H); } }
       for(const m of this.themeObj.mists){ m.x-=m.sp*dt; m.phase+=dt*0.5; if(m.x<-m.r){ m.x=W+m.r; m.y=rand(0,H); } }
     }
+    if(this.themeObj.clouds){
+      // 火海：火焰云团横向漂移 + 脉动；火星上升 + 重置
+      for(const c of this.themeObj.clouds){ c.x-=c.sp*dt; c.phase+=dt*1.5; if(c.x<-c.r){ c.x=W+c.r; c.y=rand(H*0.2,H*0.9); } }
+    }
+    if(this.themeObj.sparks){
+      for(const s of this.themeObj.sparks){
+        s.x-=s.sp*dt; s.y+=s.vy*dt; s.tw+=dt*5;
+        if(s.y<-4){ s.y=H+4; s.x=rand(0,W); }
+        if(s.x<-2){ s.x=W+2; s.y=rand(0,H); }
+      }
+    }
+    if(this.themeObj.embers){
+      for(const e of this.themeObj.embers){ e.x-=e.sp*dt; e.phase+=dt*2; if(e.x<-e.r){ e.x=W+e.r; e.y=rand(H*0.6,H); } }
+    }
     if(this.themeObj.tombs){
       for(const tb of this.themeObj.tombs){ tb.x-=tb.sp*dt; if(tb.x<-tb.w){ tb.x=W+tb.w; tb.y=rand(60,H-60); tb.w=rand(30,60); tb.h=rand(40,80); } }
     }
@@ -269,6 +293,7 @@ class Starfield{
     if(this.theme==='fortress'){ g.addColorStop(0,'#0a0a14'); g.addColorStop(1,'#140a1a'); }
     else if(this.theme==='core'){ g.addColorStop(0,'#0a0510'); g.addColorStop(0.5,'#1a0820'); g.addColorStop(1,'#050208'); }
     else if(this.theme==='starsea'){ g.addColorStop(0,'#0a0e1a'); g.addColorStop(0.5,'#0e1530'); g.addColorStop(1,'#06081a'); }
+    else if(this.theme==='fire'){ g.addColorStop(0,'#1a0608'); g.addColorStop(0.4,'#3a0e0a'); g.addColorStop(0.75,'#5a1a0a'); g.addColorStop(1,'#7a2a0a'); }
     else if(this.theme==='tomb'){ g.addColorStop(0,'#050a08'); g.addColorStop(0.5,'#0a1410'); g.addColorStop(1,'#020804'); }
     else if(this.theme==='escape'){ g.addColorStop(0,'#0a0510'); g.addColorStop(0.5,'#1a0820'); g.addColorStop(1,'#0a0410'); }
     else { g.addColorStop(0,'#05060f'); g.addColorStop(0.5,'#08081a'); g.addColorStop(1,'#04050c'); }
@@ -317,6 +342,47 @@ class Starfield{
         ctx.globalAlpha=a*0.5;
         ctx.fillRect(s.x-s.r*2.5, s.y-0.4, s.r*5, 0.8);
         ctx.fillRect(s.x-0.4, s.y-s.r*2.5, 0.8, s.r*5);
+      }
+      ctx.globalAlpha=1; ctx.shadowBlur=0;
+    }
+    if(this.themeObj.clouds){
+      // 火海：远景火焰云团（脉动橙红 radial + 发光）
+      ctx.globalCompositeOperation='lighter';
+      for(const c of this.themeObj.clouds){
+        const pulse=0.6+Math.sin(c.phase)*0.4;
+        const r=c.r*(0.85+Math.sin(c.phase*0.7)*0.15);
+        const rg=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,r);
+        rg.addColorStop(0,'rgba(255,180,80,'+(0.42*pulse)+')');
+        rg.addColorStop(0.4,'rgba(255,90,26,'+(0.28*pulse)+')');
+        rg.addColorStop(1,'rgba(160,30,10,0)');
+        ctx.fillStyle=rg;
+        ctx.beginPath(); ctx.arc(c.x,c.y,r,0,Math.PI*2); ctx.fill();
+      }
+      ctx.globalCompositeOperation='source-over';
+      // 底部炽热光带（持续闪烁的橙红辉光）
+      const heat=0.5+Math.sin(this.t*2.5)*0.15;
+      const bg=ctx.createLinearGradient(0,H*0.7,0,H);
+      bg.addColorStop(0,'rgba(255,90,26,0)');
+      bg.addColorStop(1,'rgba(255,140,40,'+(0.35*heat)+')');
+      ctx.fillStyle=bg; ctx.fillRect(0,H*0.7,W,H*0.3);
+      // 上升的火星粒子（带辉光 + 闪烁）
+      ctx.shadowBlur=8; ctx.shadowColor='#ff8a3a';
+      for(const s of this.themeObj.sparks){
+        const a=0.5+Math.sin(s.tw)*0.45;
+        ctx.globalAlpha=a;
+        ctx.fillStyle=(Math.sin(s.tw*2)>0)?'#ffd24d':'#ff7a3a';
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha=1; ctx.shadowBlur=0;
+      // 大颗余烬（缓慢漂移的红炽光球）
+      ctx.shadowBlur=12; ctx.shadowColor='#ff5a1a';
+      for(const e of this.themeObj.embers){
+        const pulse=0.7+Math.sin(e.phase)*0.3;
+        ctx.globalAlpha=pulse;
+        ctx.fillStyle='#ff5a1a';
+        ctx.beginPath(); ctx.arc(e.x,e.y,e.r*pulse,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,220,150,'+pulse+')';
+        ctx.beginPath(); ctx.arc(e.x,e.y,e.r*0.4*pulse,0,Math.PI*2); ctx.fill();
       }
       ctx.globalAlpha=1; ctx.shadowBlur=0;
     }
@@ -3017,7 +3083,7 @@ const LEVELS=[
   { name:'第一关 · 陨石地带', theme:'asteroid', length:3200, scrollSpeed:95, spawnInterval:1.3, enemyHp:1, bossType:1, obstacleType:'asteroid' },
   { name:'第二关 · 堡垒内部', theme:'fortress', length:3600, scrollSpeed:105, spawnInterval:1.1, enemyHp:3, bossType:2, obstacleType:'fortress' },
   { name:'第三关 · 堡垒核心', theme:'core',     length:4000, scrollSpeed:115, spawnInterval:0.95, enemyHp:5, bossType:3, obstacleType:'core' },
-  { name:'第四关 · 星海',     theme:'starsea',  length:4400, scrollSpeed:125, spawnInterval:0.9,  enemyHp:5, bossType:4, obstacleType:'fire' },
+  { name:'第四关 · 火海',     theme:'fire',     length:4400, scrollSpeed:125, spawnInterval:0.9,  enemyHp:5, bossType:4, obstacleType:'fire' },
   { name:'第五关 · β星人墓穴', theme:'tomb',    length:4800, scrollSpeed:130, spawnInterval:0.85, enemyHp:5, bossType:5, obstacleType:'tomb' },
   { name:'第六关 · 逃脱要塞', theme:'escape',   length:9200, scrollSpeed:200, spawnInterval:1.2,  enemyHp:5, bossType:6, obstacleType:'escape', obstacleOnlyFrom:4600 },   // 后半纯障碍（加长版）
 ];

@@ -361,6 +361,27 @@ test('ObstacleSpawner escape 间隔更密', ()=>{
   if(sp.interval !== 380) throw new Error('escape 障碍物间隔应为 380, 实际 '+sp.interval);
 });
 
+// T16c: 第四关主题改回 fire（火海）
+test('第四关主题为 fire（火海）', ()=>{
+  const L4 = sandbox.LEVELS[3];
+  if(L4.theme !== 'fire') throw new Error('第四关主题应为 fire, 实际 '+L4.theme);
+  if(L4.name !== '第四关 · 火海') throw new Error('第四关名称错误: '+L4.name);
+});
+
+// T16d: Starfield fire 主题能正常构建/更新/绘制
+test('Starfield fire 主题（火焰云团 + 火星 + 余烬）', ()=>{
+  const sf = new sandbox.Starfield('fire');
+  if(!sf.themeObj.clouds || sf.themeObj.clouds.length===0) throw new Error('fire 主题缺少火焰云团');
+  if(!sf.themeObj.sparks || sf.themeObj.sparks.length===0) throw new Error('fire 主题缺少火星粒子');
+  if(!sf.themeObj.embers || sf.themeObj.embers.length===0) throw new Error('fire 主题缺少余烬');
+  // 更新与绘制不抛异常
+  sf.update(0.05, 125);
+  sf.draw(canvas.getContext());
+  // 长时间更新后仍正常
+  for(let i=0;i<60;i++) sf.update(0.05, 125);
+  sf.draw(canvas.getContext());
+});
+
 // T16b: 第六关后半段纯障碍——障碍物成丛生成，密度远高于前半段
 test('第六关后半段障碍物成丛生成（密度更高）', ()=>{
   const g = makeGame(5);
