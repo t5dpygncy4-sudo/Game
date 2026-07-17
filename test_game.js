@@ -136,35 +136,51 @@ function makeGame(levelIdx=0){
   return g;
 }
 
-// T1: 自动开火——Player 无输入也能射出子弹
-test('Player 自动开火（不依赖开火键）', ()=>{
+// T1: 手动开火——不按空格不开火；按空格才开火
+test('Player 手动开火（不按空格不开，按住才开）', ()=>{
   const g = makeGame();
-  g.player.fireTimer = 0; // 立刻触发
+  g.player.fireTimer = 0;
   const beforeBullets = g.bullets.length;
+  // 不按开火键：不应射出
+  sandbox.Input.keys[' '] = false;
   g.player.update(0.05);
-  const ok = g.player.laserActive || g.bullets.length > beforeBullets;
-  if(!ok) throw new Error('Player 未自动开火');
+  if(g.bullets.length > beforeBullets) throw new Error('Player 未按空格也开火了');
+  // 按空格：应射出
+  sandbox.Input.keys[' '] = true;
+  g.player.fireTimer = 0;
+  g.player.update(0.05);
+  sandbox.Input.keys[' '] = false;
+  if(g.bullets.length <= beforeBullets) throw new Error('Player 按住空格未开火');
 });
 
-// T2: Wingman 自动开火
-test('Wingman 自动开火（不依赖开火键）', ()=>{
+// T2: Wingman 手动开火（与主炮同步）
+test('Wingman 手动开火（按空格才发射）', ()=>{
   const g = makeGame();
   g.player.abilities.add('wingman');
   g.player.wingmen = [ new sandbox.Wingman(g.player, -1) ];
   g.player.wingmen.forEach(w=>{ w.fireTimer=0; });
   const beforeBullets = g.bullets.length;
+  // 不按开火键：不应射出
+  sandbox.Input.keys[' '] = false;
   g.player.wingmen[0].update(0.05);
-  if(g.bullets.length <= beforeBullets) throw new Error('Wingman 未自动开火');
+  if(g.bullets.length > beforeBullets) throw new Error('Wingman 未按空格也开火了');
+  // 按空格：应射出
+  sandbox.Input.keys[' '] = true;
+  g.player.wingmen[0].fireTimer = 0;
+  g.player.wingmen[0].update(0.05);
+  sandbox.Input.keys[' '] = false;
+  if(g.bullets.length <= beforeBullets) throw new Error('Wingman 按住空格未开火');
 });
 
-// T3: 第六关存在 + obstacleOnlyFrom 配置
-test('第六关存在且 obstacleOnlyFrom=2800', ()=>{
+// T3: 第六关存在 + obstacleOnlyFrom 配置 + 加长后长度
+test('第六关存在且加长 length=9200, obstacleOnlyFrom=4600', ()=>{
   if(!sandbox.LEVELS || sandbox.LEVELS.length<6) throw new Error('LEVELS 少于 6 关');
   const L6 = sandbox.LEVELS[5];
   if(L6.name !== '第六关 · 逃脱要塞') throw new Error('第六关名称错误: '+L6.name);
   if(L6.theme !== 'escape') throw new Error('第六关主题错误');
   if(L6.bossType !== 6) throw new Error('第六关 bossType 应为 6');
-  if(L6.obstacleOnlyFrom !== 2800) throw new Error('第六关 obstacleOnlyFrom 应为 2800, 实际 '+L6.obstacleOnlyFrom);
+  if(L6.length !== 9200) throw new Error('第六关 length 应为 9200, 实际 '+L6.length);
+  if(L6.obstacleOnlyFrom !== 4600) throw new Error('第六关 obstacleOnlyFrom 应为 4600, 实际 '+L6.obstacleOnlyFrom);
 });
 
 // T4: 每关 enemyHp 检查 (1,3,5,5,5,5)
@@ -191,13 +207,14 @@ test('敌人 HP 系统：base × hpClass', ()=>{
 // T6: 子弹伤害=1（主炮与导弹）
 test('主炮与导弹子弹伤害=1', ()=>{
   const g = makeGame();
-  g.player.shoot();
+  g.player.shoot();   // 直接调用 shoot 验证子弹伤害
   const bullet = g.bullets.find(b=>b.friendly && !b.missile);
   if(!bullet) throw new Error('主炮子弹未生成');
   if(bullet.dmg !== 1) throw new Error('主炮子弹伤害不为 1, 实际 '+bullet.dmg);
   // 导弹
   g.bullets.length = 0;
   g.player.missileLevel = 1;
+  g.player.abilities.add('missile');
   g.player.fireMissiles();
   const mis = g.bullets.find(b=>b.missile);
   if(!mis) throw new Error('导弹未生成');

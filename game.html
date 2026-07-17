@@ -950,23 +950,22 @@ class Wingman{
     this.x += (tx-this.x)*0.18;
     this.y += (ty-this.y)*0.18;
 
-    // 过渡期间不发射火力（与主炮一致）
+    // 过渡期间不发射火力（与主炮一致）；手动开火（按住空格/J 才发射）
     const transitioning = (this.player.game.state==='LEVEL_OUT'||this.player.game.state==='LEVEL_IN');
+    const firing = Input.down(' ','j') && this.player.alive && !transitioning;
 
     if(this.player.hasLaser){
-      // 主炮激光 → 僚机用瘦版激光：自动激活（不再依赖开火键）
-      const firing = this.player.alive && !transitioning;
+      // 主炮激光 → 僚机用瘦版激光：与主炮同步开关
       this.laserActive = firing;
       if(this.laserActive){
         this.laserT += dt;
         this.updateLaser(dt);
-      }
+      } else { this.laserT = 0; }
     } else {
       // 关闭激光（防止主炮切换后残留）
       this.laserActive = false;
       this.fireTimer -= dt;
-      // 自动开火（不再依赖开火键）
-      if(this.fireTimer<=0 && this.player.alive && !transitioning){
+      if(firing && this.fireTimer<=0){
         if(this.player.hasCannon){
           // 主炮散弹 → 僚机弱化版散弹：3 路扇形（主炮为 5 路）
           this.fireTimer = 0.34;
@@ -1220,22 +1219,21 @@ class Player{
       this.x = clamp(this.x, this.game.camX+24, this.game.camX+W-24);
       this.y = clamp(this.y, 16, H-16);
 
-      // 激光为持续射线：自动激活；其它武器走 fireTimer 自动开火
+      // 武器开火：手动模式（按住空格/J 才开火；激光为持续射线也需按住）
+      const firing = Input.down(' ','j');
       if(this.hasLaser){
-        const firing=true;   // 自动激活激光
-        if(firing && !this.laserActive) Audio2.shoot();
-        this.laserActive=firing;
+        this.laserActive = firing;
         if(this.laserActive){
+          if(this.laserT===0) Audio2.shoot();
           this.laserT+=dt;
           this.updateLaser(dt);
-        }
+        } else { this.laserT=0; }
       } else {
         this.fireTimer-=dt;
-        // 主炮自动开火（不再依赖开火键；空格/J 仍可手动加速开火）
-        if(this.fireTimer<=0) this.shoot();
+        if(firing && this.fireTimer<=0) this.shoot();
       }
 
-      if(this.hasMissile){
+      if(this.hasMissile && firing){
         this.missileTimer-=dt;
         if(this.missileTimer<=0){ this.missileTimer=CFG.missileCooldown; this.fireMissiles(); }
       }
@@ -2962,7 +2960,7 @@ const LEVELS=[
   { name:'第三关 · 堡垒核心', theme:'core',     length:4000, scrollSpeed:115, spawnInterval:0.95, enemyHp:5, bossType:3, obstacleType:'core' },
   { name:'第四关 · 星海',     theme:'starsea',  length:4400, scrollSpeed:125, spawnInterval:0.9,  enemyHp:5, bossType:4, obstacleType:'fire' },
   { name:'第五关 · β星人墓穴', theme:'tomb',    length:4800, scrollSpeed:130, spawnInterval:0.85, enemyHp:5, bossType:5, obstacleType:'tomb' },
-  { name:'第六关 · 逃脱要塞', theme:'escape',   length:5600, scrollSpeed:200, spawnInterval:1.2,  enemyHp:5, bossType:6, obstacleType:'escape', obstacleOnlyFrom:2800 },   // 后半纯障碍
+  { name:'第六关 · 逃脱要塞', theme:'escape',   length:9200, scrollSpeed:200, spawnInterval:1.2,  enemyHp:5, bossType:6, obstacleType:'escape', obstacleOnlyFrom:4600 },   // 后半纯障碍（加长版）
 ];
 
 /* ------------------------------ 主游戏 ------------------------------ */
