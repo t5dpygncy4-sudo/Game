@@ -3500,12 +3500,21 @@ class Game{
   }
   drawToast(){
     CTX.save();
-    CTX.globalAlpha=clamp(this.toastTimer,0,1);
-    CTX.font='bold 26px monospace';
+    const a=clamp(this.toastTimer,0,1);
+    CTX.globalAlpha=a;
+    // 提示文字位于屏幕下边，带半透明黑色底条增强可读性
+    const barH=42, barY=H-barH-12;
+    CTX.fillStyle='rgba(0,0,0,0.55)';
+    CTX.fillRect(0, barY, W, barH);
+    // 顶部细线（青色高亮）
+    CTX.fillStyle='rgba(77,220,255,'+(0.7*a)+')';
+    CTX.fillRect(0, barY, W, 2);
+    // 文字：醒目青绿色 + 发光
+    CTX.font='bold 22px monospace';
     CTX.textAlign='center'; CTX.textBaseline='middle';
-    CTX.fillStyle='#fff';
-    CTX.shadowBlur=12; CTX.shadowColor=COLORS.player;
-    CTX.fillText(this.toastText, W/2, H/2-90);
+    CTX.fillStyle='#3affd2';
+    CTX.shadowBlur=14; CTX.shadowColor='#3affd2';
+    CTX.fillText(this.toastText, W/2, barY+barH/2);
     CTX.restore();
   }
   drawTitle(){
