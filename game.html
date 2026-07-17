@@ -53,7 +53,7 @@ const CFG = {
   invincibleTime: 1.4,
   spawnPadding: 40,
   playerHitScale: 0.5,
-  maxBullets: 240,
+  maxBullets: 800,
   maxParticles: 500,
 };
 
@@ -493,7 +493,7 @@ class Bullet{
     this.hits=new Set();
     this.dead=false;
     // 敌方子弹默认给足寿命：让屏幕边界负责回收，避免远距离弹道半途消失
-    this.life=opts.life!==undefined?opts.life:(opts.friendly!==false?3:8);
+    this.life=opts.life!==undefined?opts.life:(opts.friendly!==false?3:14);
     this.angle=opts.angle||0;
     this._drip=Math.random()*Math.PI*2;  // 腐蚀液滴落动画相位
   }
@@ -3130,7 +3130,17 @@ class Game{
     this.player.invincible=2.0;
     this.state='PLAYING';
   }
-  addBullet(b){ this.bullets.push(b); if(this.bullets.length>CFG.maxBullets) this.bullets.shift(); }
+  addBullet(b){
+    this.bullets.push(b);
+    if(this.bullets.length>CFG.maxBullets){
+      // 优先移除最早的离屏子弹，避免误删屏内 Boss 弹幕
+      let idx=this.bullets.findIndex(x =>
+        x.x<this.camX-80||x.x>this.camX+W+80||x.y<-80||x.y>H+80
+      );
+      if(idx>=0) this.bullets.splice(idx,1);
+      else this.bullets.shift();
+    }
+  }
   spawnCrystal(x,y){ this.crystals.push(new Crystal(x,y)); }
   spawnLifeDrop(x,y){ this.lifeDrops.push(new LifeDrop(x,y)); }
   findNearestEnemy(x,y){

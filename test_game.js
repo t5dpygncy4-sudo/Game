@@ -382,6 +382,41 @@ test('Starfield fire 主题（火焰云团 + 火星 + 余烬）', ()=>{
   sf.draw(canvas.getContext());
 });
 
+// T17: 敌方子弹默认寿命足够长（14s），避免屏内弹道中途消失
+test('敌方子弹默认寿命 14 秒', ()=>{
+  const b = new sandbox.Bullet(100,100,-100,0,{friendly:false});
+  if(b.life < 14) throw new Error('敌方子弹寿命应≥14s, 实际 '+b.life);
+  const f = new sandbox.Bullet(100,100,100,0,{friendly:true});
+  if(f.life !== 3) throw new Error('友方子弹寿命应为3s, 实际 '+f.life);
+});
+
+// T18: addBullet 容量上限触发时优先移除离屏子弹，保留屏内 Boss 弹幕
+test('addBullet 容量上限时优先移除离屏子弹', ()=>{
+  const g = sandbox.makeGame ? sandbox.makeGame() : null;
+  if(!g){
+    // 退而其次：直接 new Game
+    const game = new sandbox.Game();
+    game.camX = 0; // 屏内范围 [0, W]
+    // 先填满（不超容）
+    for(let i=0;i<sandbox.CFG.maxBullets;i++){
+      game.addBullet(new sandbox.Bullet(400, 240, 0, 0, {friendly:false}));  // 屏内子弹
+    }
+    const beforeCount = game.bullets.length;
+    // 添加 1 个屏外子弹 + 1 个屏内子弹，触发上限
+    game.addBullet(new sandbox.Bullet(-5000, 240, 0, 0, {friendly:false}));   // 屏外
+    // 添加屏内子弹触发上限，应优先移除上面的屏外子弹
+    game.addBullet(new sandbox.Bullet(400, 240, 0, 0, {friendly:false}));    // 屏内
+    // 屏外子弹应已被移除（找不到 x=-5000 的子弹）
+    const stillHasOffscreen = game.bullets.some(b => b.x === -5000);
+    if(stillHasOffscreen) throw new Error('容量上限时应优先移除离屏子弹，但屏外子弹仍存在');
+  }
+});
+
+// T19: CFG.maxBullets 已提升到 800（足以容纳 boss3 螺旋弹幕 50发/秒 × 6秒）
+test('maxBullets 上限为 800', ()=>{
+  if(sandbox.CFG.maxBullets < 800) throw new Error('maxBullets 应≥800, 实际 '+sandbox.CFG.maxBullets);
+});
+
 // T16b: 第六关后半段纯障碍——障碍物成丛生成，密度远高于前半段
 test('第六关后半段障碍物成丛生成（密度更高）', ()=>{
   const g = makeGame(5);
