@@ -1133,9 +1133,9 @@ class Wingman{
     const startX=this.x+12;
     const endX=g.camX+W;
     const lv=this.player.laserLevel;
-    // 僚机是主激光的弱化版：halfH 和 dps 都是主激光的 ~60%
+    // 僚机是主激光的弱化版：halfH 约 60%，dps 为主激光的 50%
     const halfH=4 + lv*1.2;       // 比主激光窄
-    const dps=this.player.laserDps()*0.4;   // 主激光的 40% 伤害
+    const dps=this.player.laserDps()*0.5;   // 主激光的 50% 伤害
     const col=this.player.laserColor();
     const dmg=dps*dt;
     for(const e of g.enemies){
@@ -1407,11 +1407,11 @@ class Player{
     if(this.laserLevel===2) return '#ff9a3c';   // 橙
     return '#ff3a3a';                            // 红
   }
-  // 激光等级伤害（dps）：1级 10 2级 18 3级 28
+  // 激光等级伤害（dps）：1级 10 2级 20 3级 30
   laserDps(){
     if(this.laserLevel===1) return 10;
-    if(this.laserLevel===2) return 18;
-    return 28;
+    if(this.laserLevel===2) return 20;
+    return 30;
   }
   // 持续激光：每帧扫描光束路径上的目标并造成持续伤害
   updateLaser(dt){
