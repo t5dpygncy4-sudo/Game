@@ -361,6 +361,24 @@ test('ObstacleSpawner escape 间隔更密', ()=>{
   if(sp.interval !== 380) throw new Error('escape 障碍物间隔应为 380, 实际 '+sp.interval);
 });
 
+// T16b: 第六关后半段纯障碍——障碍物成丛生成，密度远高于前半段
+test('第六关后半段障碍物成丛生成（密度更高）', ()=>{
+  const g = makeGame(5);
+  g.scrollDistance = g.level.obstacleOnlyFrom + 200; // 进入纯障碍段
+  const beforeObs = g.obstacles.length;
+  // 推进 600 像素（约 3 次 spawn 周期）
+  const dt = 0.5;
+  const ticks = Math.ceil(600 / (g.level.scrollSpeed * dt));
+  for(let i=0;i<ticks;i++){
+    g.camX += g.level.scrollSpeed * dt;
+    g.scrollDistance += g.level.scrollSpeed * dt;
+    g.obstacleSpawner.update(dt);
+  }
+  const added = g.obstacles.length - beforeObs;
+  // 至少生成 4 个障碍物（一丛 2-3 个 × 至少 2 丛）
+  if(added < 4) throw new Error(`后半段障碍物生成不足: 仅 ${added} 个`);
+});
+
 // T17: CFG 配置项存在
 test('CFG 关键配置项存在', ()=>{
   if(!sandbox.CFG || !sandbox.CFG.playerSpeedMax) throw new Error('CFG.playerSpeedMax 不存在');

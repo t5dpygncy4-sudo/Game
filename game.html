@@ -908,8 +908,16 @@ class ObstacleSpawner{
   }
   update(dt){
     if(this.game.scrollDistance >= this.nextDist && this.game.scrollDistance < this.game.level.length - 400){
-      this.spawn();
-      this.nextDist += this.interval + rand(-80,150);
+      // 第六关后半段（纯障碍段）：使用更密集的生成模式
+      const inObstacleOnly = this.type==='escape' && this.game.level.obstacleOnlyFrom
+        && this.game.scrollDistance >= this.game.level.obstacleOnlyFrom;
+      if(inObstacleOnly){
+        this.spawnCluster();   // 一次生成一组（2-3 个）障碍
+        this.nextDist += 220 + rand(-40,80);   // 短间隔（≈220），高密度
+      } else {
+        this.spawn();
+        this.nextDist += this.interval + rand(-80,150);
+      }
     }
   }
   spawn(){
@@ -929,6 +937,57 @@ class ObstacleSpawner{
     if(t==='fire_pillar_top'||t==='fire_pillar_bot') y = H/2;
     if(t==='debris_block') y = choice([rand(80,140), rand(H-140,H-80), H/2, H/2-80, H/2+80]);
     this.game.obstacles.push(new Obstacle(t, x, y, this.game));
+  }
+  // 第六关后半段：一次生成一丛障碍物（2-3 个，纵向上错开形成通道）
+  spawnCluster(){
+    const baseX = this.game.camX + W + 60;
+    // 随机选一种"丛"模式：上下夹击 / Z字通道 / 激光网格 / 密集碎片
+    const mode = choice(['choke','zigzag','grid','debris_field','gauntlet']);
+    if(mode==='choke'){
+      // 上下夹击：上墙下墙留中间通道
+      const gapY = rand(160, H-160);
+      const gapH = rand(110, 150);
+      this.game.obstacles.push(new Obstacle('ruin_wall', baseX, H/2, this.game));
+      const o = this.game.obstacles[this.game.obstacles.length-1];
+      o.gapY = gapY; o.gapH = gapH;
+      // 紧跟着一个激光阵列穿过通道
+      this.game.obstacles.push(new Obstacle('laser_array', baseX+180, H/2, this.game));
+      const o2 = this.game.obstacles[this.game.obstacles.length-1];
+      o2.gapY = gapY + rand(-50,50); o2.gapH = 100;
+    } else if(mode==='zigzag'){
+      // Z字通道：连续 3 个 ruin_wall，缺口交替上下
+      for(let i=0;i<3;i++){
+        const gapY = (i%2===0) ? rand(120,200) : rand(H-200, H-120);
+        this.game.obstacles.push(new Obstacle('ruin_wall', baseX+i*180, H/2, this.game));
+        const o = this.game.obstacles[this.game.obstacles.length-1];
+        o.gapY = gapY; o.gapH = 120;
+      }
+    } else if(mode==='grid'){
+      // 激光网格：两道激光阵列 + 一个碎片块
+      this.game.obstacles.push(new Obstacle('laser_array', baseX, H/2, this.game));
+      const o1 = this.game.obstacles[this.game.obstacles.length-1];
+      o1.gapY = rand(140, H-140); o1.gapH = 90;
+      this.game.obstacles.push(new Obstacle('laser_array', baseX+200, H/2, this.game));
+      const o2 = this.game.obstacles[this.game.obstacles.length-1];
+      o2.gapY = rand(140, H-140); o2.gapH = 90;
+      this.game.obstacles.push(new Obstacle('debris_block', baseX+100, H/2, this.game));
+    } else if(mode==='debris_field'){
+      // 碎片群：3-4 个 debris_block 散布在不同高度
+      const n = 3 + Math.floor(rand(0,2));
+      for(let i=0;i<n;i++){
+        const y = choice([rand(80,140), rand(H/2-60,H/2+60), rand(H-140,H-80)]);
+        this.game.obstacles.push(new Obstacle('debris_block', baseX + i*90, y, this.game));
+      }
+    } else { // gauntlet
+      // 综合考验：上墙 + 碎片块 + 下激光
+      this.game.obstacles.push(new Obstacle('ruin_wall', baseX, H/2, this.game));
+      const o1 = this.game.obstacles[this.game.obstacles.length-1];
+      o1.gapY = rand(150, H-150); o1.gapH = 130;
+      this.game.obstacles.push(new Obstacle('debris_block', baseX+150, o1.gapY+rand(-30,30), this.game));
+      this.game.obstacles.push(new Obstacle('laser_array', baseX+300, H/2, this.game));
+      const o3 = this.game.obstacles[this.game.obstacles.length-1];
+      o3.gapY = o1.gapY + rand(-40,40); o3.gapH = 100;
+    }
   }
 }
 
@@ -3259,7 +3318,9 @@ class Game{
       for(const o of this.obstacles) o.draw(CTX,this.camX);
       for(const e of this.enemies) e.draw(CTX,this.camX);
       if(this.boss) this.boss.draw(CTX,this.camX);
-      for(const b of this.bullets) b.draw(CTX,this.camX);
+      // 子弹分两批绘制：先绘制玩家友方子弹，再绘制敌方子弹（确保敌弹在视觉上方，便于察觉）
+      for(const b of this.bullets) if(b.friendly) b.draw(CTX,this.camX);
+      for(const b of this.bullets) if(!b.friendly) b.draw(CTX,this.camX);
       for(const p of this.particles) p.draw(CTX,this.camX);
       if(this.player.alive) this.player.draw(CTX,this.camX);
       this.drawHUD();
