@@ -118,6 +118,7 @@ globalThis.__exports = {
   Game, LEVELS, CFG, COLORS, Input, Audio2,
   Player, Wingman, Bullet, Enemy, Boss,
   Obstacle, ObstacleSpawner, Starfield, WAVE_TEMPLATES, UPGRADES,
+  Crystal, LifeDrop,
 };
 `;
 vm.runInContext(exportLine, sandbox);
@@ -533,6 +534,68 @@ test('追踪导弹速度提升 + 失去目标重选', ()=>{
   missile.update(0.05, g);
   if(!missile.target || missile.target === oldTarget) throw new Error('导弹应立即重选最近敌人');
   if(missile.target !== e2) throw new Error('导弹新目标应为新敌人 e2');
+});
+
+// T26: 道具磁吸——玩家靠近时晶体被吸过来
+test('Crystal 磁吸：玩家靠近时被吸引', ()=>{
+  const g = makeGame(0);
+  // 在玩家右侧 100 像素放置晶体（在磁吸范围 150 内）
+  const c = new sandbox.Crystal(g.player.x + 100, g.player.y);
+  g.crystals.push(c);
+  const x0 = c.x, y0 = c.y;
+  // 推进 30 帧（约 0.5s）
+  for(let i=0;i<30;i++) c.update(0.016, g.player);
+  // 晶体应向玩家方向移动（x 应减小）
+  if(c.x >= x0) throw new Error(`晶体应被吸过来（x 减小），实际 x0=${x0}, x=${c.x}`);
+  // 距离应明显减小
+  const dist0 = Math.hypot(x0-g.player.x, y0-g.player.y);
+  const dist1 = Math.hypot(c.x-g.player.x, c.y-g.player.y);
+  if(dist1 >= dist0) throw new Error(`距离应减小, dist0=${dist0.toFixed(1)} dist1=${dist1.toFixed(1)}`);
+});
+
+// T27: 道具磁吸——玩家远离时晶体维持基础左飘
+test('Crystal 远离时不被吸引', ()=>{
+  const g = makeGame(0);
+  // 在玩家右侧 500 像素放置晶体（远超磁吸范围 150）
+  const c = new sandbox.Crystal(g.player.x + 500, g.player.y);
+  g.crystals.push(c);
+  const x0 = c.x;
+  // 推进 30 帧
+  for(let i=0;i<30;i++) c.update(0.016, g.player);
+  // 不应被吸过来（x 应保持基础左飘，不会反向加速向玩家）
+  if(c.x > x0) throw new Error(`远离时晶体不应被吸过来, x0=${x0}, x=${c.x}`);
+});
+
+// T28: 生命道具磁吸
+test('LifeDrop 磁吸：玩家靠近时被吸引', ()=>{
+  const g = makeGame(0);
+  const l = new sandbox.LifeDrop(g.player.x + 150, g.player.y);
+  g.lifeDrops.push(l);
+  const x0 = l.x;
+  // LifeDrop 磁吸范围 180，玩家正好在边界
+  for(let i=0;i<30;i++) l.update(0.016, g.player);
+  // 应被吸引（x 应明显减小）
+  if(l.x >= x0) throw new Error(`LifeDrop 应被吸过来, x0=${x0}, x=${l.x}`);
+});
+
+// T29: 玩家侧视飞机绘制不抛异常（基础+加速+护盾激活）
+test('Player 侧视飞机绘制不抛异常', ()=>{
+  const g = makeGame();
+  const ctx = canvas.getContext();
+  g.player.t = 1.0;
+  g.player.draw(ctx, 0);
+  g.player.speedLevel = 5;
+  g.player.draw(ctx, 0);
+  g.player.shieldHits = 3;
+  g.player.draw(ctx, 0);
+});
+
+// T30: 僚机侧视绘制不抛异常
+test('Wingman 侧视绘制不抛异常', ()=>{
+  const g = makeGame();
+  g.player.abilities.add('wingman');
+  g.player.wingmen = [ new sandbox.Wingman(g.player, 0) ];
+  g.player.wingmen.forEach(w=>{ w.t = 1.0; w.draw(canvas.getContext(), 0); });
 });
 
 // T16b: 第六关后半段纯障碍——障碍物成丛生成（每丛 2-3 个）
