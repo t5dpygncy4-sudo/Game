@@ -118,7 +118,8 @@ globalThis.__exports = {
   Game, LEVELS, CFG, COLORS, Input, Audio2,
   Player, Wingman, Bullet, Enemy, Boss,
   Obstacle, ObstacleSpawner, Starfield, WAVE_TEMPLATES, UPGRADES,
-  Crystal, LifeDrop,
+  Crystal, LifeDrop, BombCrystal,
+  W, H,
 };
 `;
 vm.runInContext(exportLine, sandbox);
@@ -596,6 +597,80 @@ test('Wingman 侧视绘制不抛异常', ()=>{
   g.player.abilities.add('wingman');
   g.player.wingmen = [ new sandbox.Wingman(g.player, 0) ];
   g.player.wingmen.forEach(w=>{ w.t = 1.0; w.draw(canvas.getContext(), 0); });
+});
+
+// T31: LifeDrop 改为红色六角晶体（不再心形）
+test('LifeDrop 改为红色晶体（不抛异常）', ()=>{
+  const l = new sandbox.LifeDrop(100, 100);
+  if(l.w !== 22) throw new Error('LifeDrop 尺寸应为 22, 实际 '+l.w);
+  l.t = 1.0;
+  l.draw(canvas.getContext(), 0);
+});
+
+// T32: BombCrystal 类存在 + 拾取后清屏
+test('BombCrystal 拾取后清空敌人和子弹', ()=>{
+  const g = makeGame(0);
+  // 放入 2 个敌人 + 3 发敌方子弹 + 2 发友方子弹
+  g.enemies.push(new sandbox.Enemy('asteroid_s', g.camX + 100, 100, g));
+  g.enemies.push(new sandbox.Enemy('asteroid_s', g.camX + 200, 200, g));
+  g.bullets.push(new sandbox.Bullet(g.camX+100,100,-200,0,{w:8,h:8,color:'#f80',friendly:false}));
+  g.bullets.push(new sandbox.Bullet(g.camX+150,150,-200,0,{w:8,h:8,color:'#f80',friendly:false}));
+  g.bullets.push(new sandbox.Bullet(g.camX+200,200,-200,0,{w:8,h:8,color:'#f80',friendly:false}));
+  g.bullets.push(new sandbox.Bullet(g.camX+100,100, 200,0,{w:8,h:8,color:'#0ff',friendly:true}));
+  g.bullets.push(new sandbox.Bullet(g.camX+100,100, 200,0,{w:8,h:8,color:'#0ff',friendly:true}));
+  // 应用 BombCrystal
+  const bomb = new sandbox.BombCrystal(g.player.x, g.player.y);
+  bomb.apply(g.player);
+  // 敌人应全部死亡
+  const aliveEnemies = g.enemies.filter(e=>!e.dead);
+  if(aliveEnemies.length !== 0) throw new Error('应清除所有敌人, 剩余 '+aliveEnemies.length);
+  // 敌方子弹应被清空
+  const enemyBullets = g.bullets.filter(b=>!b.friendly);
+  if(enemyBullets.length !== 0) throw new Error('应清空敌方子弹, 剩余 '+enemyBullets.length);
+  // 友方子弹应保留
+  const friendlyBullets = g.bullets.filter(b=>b.friendly);
+  if(friendlyBullets.length !== 2) throw new Error('友方子弹应保留 2 发, 实际 '+friendlyBullets.length);
+});
+
+// T33: BombCrystal 不伤害 Boss
+test('BombCrystal 不伤害 Boss', ()=>{
+  const g = makeGame(5); // 第六关有 Boss
+  const boss = new sandbox.Boss(g, 6);
+  boss.entered = true;
+  g.boss = boss;
+  const hpBefore = boss.hp;
+  const bomb = new sandbox.BombCrystal(g.player.x, g.player.y);
+  bomb.apply(g.player);
+  if(boss.hp !== hpBefore) throw new Error('BombCrystal 不应伤害 Boss, hp 前='+hpBefore+' 后='+boss.hp);
+});
+
+// T34: BombCrystal 磁吸
+test('BombCrystal 磁吸：玩家靠近时被吸引', ()=>{
+  const g = makeGame(0);
+  const b = new sandbox.BombCrystal(g.player.x + 150, g.player.y);
+  g.bombCrystals.push(b);
+  const x0 = b.x;
+  for(let i=0;i<30;i++) b.update(0.016, g.player);
+  if(b.x >= x0) throw new Error(`BombCrystal 应被吸过来, x0=${x0}, x=${b.x}`);
+});
+
+// T35: BombCrystal 绘制不抛异常
+test('BombCrystal 绘制不抛异常', ()=>{
+  const b = new sandbox.BombCrystal(100, 100);
+  b.t = 1.0;
+  b.draw(canvas.getContext(), 0);
+});
+
+// T36: 玩家飞机新外形绘制不抛异常（基础+加速5级+护盾激活）
+test('Player 新秀气外形绘制不抛异常', ()=>{
+  const g = makeGame();
+  const ctx = canvas.getContext();
+  g.player.t = 1.0;
+  g.player.draw(ctx, 0);
+  g.player.speedLevel = 5;
+  g.player.draw(ctx, 0);
+  g.player.shieldHits = 3;
+  g.player.draw(ctx, 0);
 });
 
 // T16b: 第六关后半段纯障碍——障碍物成丛生成（每丛 2-3 个）

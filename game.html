@@ -603,17 +603,32 @@ class Bullet{
   }
 }
 
-/* ------------------------------ 能量晶体 ------------------------------ */
+/* ------------------------------ 能量晶体（黄） ------------------------------ */
 class Crystal{
   constructor(x,y){
     this.x=x;this.y=y;this.w=20;this.h=20;
     this.vx=-40;this.vy=0;this.t=0;this.dead=false;
   }
   bounds(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
-  update(dt){
+  update(dt, player){
     this.t+=dt;
+    if(player && player.alive){
+      const dx=player.x-this.x, dy=player.y-this.y;
+      const d=Math.hypot(dx,dy);
+      const range=150;
+      if(d<range){
+        const pull=1500;
+        const inv=1/Math.max(d,0.5);
+        this.vx += dx*inv*pull*dt;
+        this.vy += dy*inv*pull*dt;
+        this.vx*=0.88; this.vy*=0.88;
+      } else {
+        this.vx += (-40 - this.vx)*dt*3;
+        this.vy *= 0.95;
+      }
+    }
     this.x+=this.vx*dt;
-    this.y+=Math.sin(this.t*3)*8*dt;
+    this.y+=this.vy*dt + Math.sin(this.t*3)*8*dt;
     if(this.x<-40) this.dead=true;
   }
   apply(player){
@@ -640,16 +655,77 @@ class Crystal{
   }
 }
 
-/* ------------------------------ 生命补给道具 ------------------------------ */
+/* ------------------------------ 生命晶体（红） ------------------------------ */
 class LifeDrop{
   constructor(x,y){
-    this.x=x;this.y=y;this.w=26;this.h=26;
+    this.x=x;this.y=y;this.w=22;this.h=22;
     this.vx=-40;this.vy=0;this.t=0;this.dead=false;
   }
   bounds(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
   update(dt, player){
     this.t+=dt;
-    // 磁吸：玩家靠近时把心吸过来（范围更大，吸力更强）
+    if(player && player.alive){
+      const dx=player.x-this.x, dy=player.y-this.y;
+      const d=Math.hypot(dx,dy);
+      const range=170;
+      if(d<range){
+        const pull=1600;
+        const inv=1/Math.max(d,0.5);
+        this.vx += dx*inv*pull*dt;
+        this.vy += dy*inv*pull*dt;
+        this.vx*=0.88; this.vy*=0.88;
+      } else {
+        this.vx += (-40 - this.vx)*dt*3;
+        this.vy *= 0.95;
+      }
+    }
+    this.x+=this.vx*dt;
+    this.y+=this.vy*dt + Math.sin(this.t*2.5)*9*dt;
+    if(this.x<-40) this.dead=true;
+  }
+  apply(player){
+    Audio2.levelup();
+    if(player.lives<5){
+      player.lives++;
+      spawnExplosion(player.game.particles,this.x,this.y,'#ff5d7a',14,1);
+      player.game.toast('生命 +1  (剩余 '+player.lives+')');
+    } else { player.game.toast('生命已满'); }
+  }
+  draw(ctx,camX){
+    const sx=this.x-camX;
+    ctx.save();
+    ctx.translate(sx,this.y);
+    ctx.rotate(this.t*1.6);
+    const pulse=1+Math.sin(this.t*4)*0.1;
+    ctx.scale(pulse,pulse);
+    ctx.shadowBlur=16; ctx.shadowColor='#ff5d7a';
+    // 红色六角晶体
+    ctx.fillStyle='#ff5d7a';
+    ctx.beginPath();
+    ctx.moveTo(0,-12); ctx.lineTo(10,-4); ctx.lineTo(10,4); ctx.lineTo(0,12); ctx.lineTo(-10,4); ctx.lineTo(-10,-4);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur=0;
+    // 内核
+    ctx.fillStyle='#ffd0dc';
+    ctx.beginPath();
+    ctx.moveTo(0,-7); ctx.lineTo(5,-2); ctx.lineTo(5,2); ctx.lineTo(0,7); ctx.lineTo(-5,2); ctx.lineTo(-5,-2);
+    ctx.closePath(); ctx.fill();
+    // 高光
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(-3,-4, 1.5, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+/* ------------------------------ 清屏晶体（蓝绿） ------------------------------ */
+class BombCrystal{
+  constructor(x,y){
+    this.x=x;this.y=y;this.w=24;this.h=24;
+    this.vx=-40;this.vy=0;this.t=0;this.dead=false;
+  }
+  bounds(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+  update(dt, player){
+    this.t+=dt;
     if(player && player.alive){
       const dx=player.x-this.x, dy=player.y-this.y;
       const d=Math.hypot(dx,dy);
@@ -666,32 +742,63 @@ class LifeDrop{
       }
     }
     this.x+=this.vx*dt;
-    this.y+=this.vy*dt + Math.sin(this.t*2.5)*10*dt;
+    this.y+=this.vy*dt + Math.sin(this.t*2.2)*9*dt;
     if(this.x<-40) this.dead=true;
   }
   apply(player){
+    const g=player.game;
     Audio2.levelup();
-    if(player.lives<5){ player.lives++; spawnExplosion(player.game.particles,this.x,this.y,'#ff5d7a',14,1); player.game.toast('生命 +1  (剩余 '+player.lives+')'); }
-    else { player.game.toast('生命已满'); }
+    // 杀死屏幕内所有敌人
+    let killCount=0;
+    for(const e of g.enemies){
+      if(e.dead) continue;
+      if(e.x>g.camX-40 && e.x<g.camX+W+40){
+        e.hp=0; e.dead=true; e.die();
+        killCount++;
+      }
+    }
+    // 清空所有敌方子弹（保留友方）
+    let bulletCount=0;
+    for(let i=g.bullets.length-1;i>=0;i--){
+      if(!g.bullets[i].friendly){
+        const b=g.bullets[i];
+        spawnExplosion(g.particles,b.x,b.y,'#3affd2',6,0.6);
+        g.bullets.splice(i,1);
+        bulletCount++;
+      }
+    }
+    // 清屏爆炸特效
+    spawnExplosion(g.particles, g.camX+W/2, H/2, '#3affd2', 60, 3);
+    g.shake=0.8;
+    g.toast('清屏！清除 '+killCount+' 敌人 + '+bulletCount+' 子弹');
   }
   draw(ctx,camX){
     const sx=this.x-camX;
     ctx.save();
     ctx.translate(sx,this.y);
-    const pulse=1+Math.sin(this.t*4)*0.08;
+    ctx.rotate(this.t*1.5);
+    const pulse=1+Math.sin(this.t*5)*0.12;
     ctx.scale(pulse,pulse);
-    ctx.shadowBlur=18; ctx.shadowColor='#ff5d7a';
-    // 心形
-    ctx.fillStyle='#ff5d7a';
+    ctx.shadowBlur=18; ctx.shadowColor='#3affd2';
+    // 蓝绿八角星晶体
+    ctx.fillStyle='#3affd2';
     ctx.beginPath();
-    ctx.moveTo(0,8);
-    ctx.bezierCurveTo(-12,-2,-10,-12,0,-6);
-    ctx.bezierCurveTo(10,-12,12,-2,0,8);
+    for(let i=0;i<8;i++){
+      const a=i*Math.PI/4 - Math.PI/2;
+      const r=i%2===0?13:6;
+      const x=Math.cos(a)*r, y=Math.sin(a)*r;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
     ctx.closePath(); ctx.fill();
     ctx.shadowBlur=0;
-    ctx.fillStyle='#ffd0dc';
+    // 内核
+    ctx.fillStyle='#bfffe8';
     ctx.beginPath();
-    ctx.arc(-4,-3,2.5,0,Math.PI*2); ctx.fill();
+    ctx.moveTo(0,-6); ctx.lineTo(4,0); ctx.lineTo(0,6); ctx.lineTo(-4,0);
+    ctx.closePath(); ctx.fill();
+    // 中心亮点
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(0,0, 1.5, 0, Math.PI*2); ctx.fill();
     ctx.restore();
   }
 }
@@ -1220,39 +1327,39 @@ class Wingman{
     const sx=this.x-camX;
     ctx.save();
     ctx.translate(sx,this.y);
-    // 小尾焰（侧视单喷口）
-    ctx.shadowBlur=8; ctx.shadowColor='#5ef7ff';
-    ctx.fillStyle='rgba(94,247,255,0.75)';
-    const flame=4+Math.sin(this.t*12)*2;
+    // 小尾焰
+    ctx.shadowBlur=6; ctx.shadowColor='#5ef7ff';
+    ctx.fillStyle='rgba(94,247,255,0.7)';
+    const flame=3+Math.sin(this.t*12)*1.5;
     ctx.beginPath();
-    ctx.moveTo(-12,-2); ctx.lineTo(-18-flame,0); ctx.lineTo(-12,2);
+    ctx.moveTo(-9,-1.5); ctx.lineTo(-13-flame,0); ctx.lineTo(-9,1.5);
     ctx.closePath(); ctx.fill();
-    // 机身：侧视小流线型
-    ctx.shadowBlur=6; ctx.shadowColor=COLORS.player;
+    // 机身：纤细流线型
+    ctx.shadowBlur=5; ctx.shadowColor=COLORS.player;
     ctx.fillStyle=COLORS.playerWing;
     ctx.beginPath();
-    ctx.moveTo(14,0);                    // 机头
-    ctx.quadraticCurveTo(10,-3, 2,-4);   // 机身上
-    ctx.lineTo(-8,-4);
-    ctx.quadraticCurveTo(-12,-3, -12,-1);
-    ctx.lineTo(-12,1);
-    ctx.quadraticCurveTo(-12,3, -8,4);
-    ctx.lineTo(2,4);
-    ctx.quadraticCurveTo(10,3, 14,0);    // 回到机头
+    ctx.moveTo(11,0);
+    ctx.quadraticCurveTo(8,-2, 2,-3);
+    ctx.lineTo(-7,-3);
+    ctx.quadraticCurveTo(-10,-2, -10,-0.5);
+    ctx.lineTo(-10,0.5);
+    ctx.quadraticCurveTo(-10,2, -7,3);
+    ctx.lineTo(2,3);
+    ctx.quadraticCurveTo(8,2, 11,0);
     ctx.closePath(); ctx.fill();
-    // 小尾翼（上方）
+    // 小尾翼
     ctx.beginPath();
-    ctx.moveTo(-4,-4); ctx.lineTo(-10,-4); ctx.lineTo(-10,-12); ctx.lineTo(-6,-12);
-    ctx.quadraticCurveTo(-4,-8, -4,-4);
+    ctx.moveTo(-3,-3); ctx.lineTo(-9,-3); ctx.lineTo(-8,-9); ctx.lineTo(-5,-9);
+    ctx.quadraticCurveTo(-3,-7, -3,-3);
     ctx.closePath(); ctx.fill();
-    // 小主翼（下方后掠）
+    // 小主翼
     ctx.beginPath();
-    ctx.moveTo(2,3); ctx.lineTo(-4,11); ctx.lineTo(-10,11); ctx.lineTo(-8,4);
+    ctx.moveTo(2,2); ctx.lineTo(-3,9); ctx.lineTo(-8,9); ctx.lineTo(-7,3);
     ctx.closePath(); ctx.fill();
     // 驾驶舱高光
     ctx.shadowBlur=0;
     ctx.fillStyle='#bffcff';
-    ctx.fillRect(2,-2,5,1.5);
+    ctx.fillRect(2,-2,4,1);
     ctx.restore();
     // 僚机激光射线（绘制在僚机之上）
     this.drawLaser(ctx, camX);
@@ -1576,129 +1683,100 @@ class Player{
     if(this.invincible>0 && Math.floor(this.invincible*20)%2===0) return;
     ctx.save();
     ctx.translate(sx,this.y);
-    const flame=14+Math.sin(this.engineFlick)*8;
-    // ===== 侧视单喷口尾焰：从机身后端向左喷射 =====
-    // 外焰：等离子光晕
-    ctx.shadowBlur=16; ctx.shadowColor='#4db4ff';
-    const fg=ctx.createLinearGradient(-34-flame,0,-18,0);
-    fg.addColorStop(0,'rgba(77,180,255,0)');
-    fg.addColorStop(0.5,'rgba(94,247,255,0.7)');
-    fg.addColorStop(1,'#4db4ff');
+    const flame=10+Math.sin(this.engineFlick)*6;
+    // ===== 细长尾焰：单喷口，向左收敛 =====
+    ctx.shadowBlur=12; ctx.shadowColor='#5ef7ff';
+    const fg=ctx.createLinearGradient(-22-flame,0,-14,0);
+    fg.addColorStop(0,'rgba(94,247,255,0)');
+    fg.addColorStop(0.6,'rgba(94,247,255,0.6)');
+    fg.addColorStop(1,'#bffcff');
     ctx.fillStyle=fg;
     ctx.beginPath();
-    ctx.moveTo(-18,-6); ctx.lineTo(-34-flame,0); ctx.lineTo(-18,6);
+    ctx.moveTo(-14,-2.5); ctx.lineTo(-22-flame,0); ctx.lineTo(-14,2.5);
     ctx.closePath(); ctx.fill();
-    // 中焰：青蓝
-    ctx.shadowBlur=10; ctx.shadowColor='#5ef7ff';
-    const fg2=ctx.createLinearGradient(-26-flame*0.7,0,-18,0);
-    fg2.addColorStop(0,'rgba(94,247,255,0)');
-    fg2.addColorStop(1,'#bffcff');
-    ctx.fillStyle=fg2;
-    ctx.beginPath();
-    ctx.moveTo(-18,-3.5); ctx.lineTo(-26-flame*0.7,0); ctx.lineTo(-18,3.5);
-    ctx.closePath(); ctx.fill();
-    // 内核：白热
     ctx.shadowBlur=0;
     ctx.fillStyle='#fff';
     ctx.beginPath();
-    ctx.moveTo(-18,-1.5); ctx.lineTo(-22-flame*0.4,0); ctx.lineTo(-18,1.5);
+    ctx.moveTo(-14,-1); ctx.lineTo(-18-flame*0.5,0); ctx.lineTo(-14,1);
     ctx.closePath(); ctx.fill();
 
-    // ===== 侧视机身：水平流线型（机头朝右） =====
-    ctx.shadowBlur=14; ctx.shadowColor=COLORS.player;
-    const bg=ctx.createLinearGradient(0,-8,0,8);
-    bg.addColorStop(0,'#a8fcff'); bg.addColorStop(0.4,'#5ef7ff'); bg.addColorStop(0.7,'#2bb6cc'); bg.addColorStop(1,'#0a4a5a');
+    // ===== 机身：细长流线型（机头朝右，更秀气） =====
+    ctx.shadowBlur=10; ctx.shadowColor=COLORS.player;
+    const bg=ctx.createLinearGradient(0,-5,0,5);
+    bg.addColorStop(0,'#a8fcff'); bg.addColorStop(0.5,'#5ef7ff'); bg.addColorStop(1,'#1a7a8c');
     ctx.fillStyle=bg;
     ctx.beginPath();
-    ctx.moveTo(28,0);                     // 机头尖端
-    ctx.quadraticCurveTo(22,-5, 8,-7);    // 机头上沿
-    ctx.lineTo(-14,-7);                   // 机身平直上沿
-    ctx.quadraticCurveTo(-22,-6, -26,-3); // 尾部收窄上
-    ctx.lineTo(-26,3);                    // 尾部下
-    ctx.quadraticCurveTo(-22,6, -14,7);   // 机身下沿
-    ctx.lineTo(8,7);
-    ctx.quadraticCurveTo(22,5, 28,0);     // 回到机头
+    ctx.moveTo(26,0);                    // 机头尖端
+    ctx.quadraticCurveTo(20,-3, 6,-4);   // 机头上沿微弯
+    ctx.lineTo(-10,-4);                  // 机身平直上沿
+    ctx.quadraticCurveTo(-16,-3, -14,-1); // 尾部收窄上
+    ctx.lineTo(-14,1);
+    ctx.quadraticCurveTo(-16,3, -10,4);
+    ctx.lineTo(6,4);
+    ctx.quadraticCurveTo(20,3, 26,0);    // 回到机头
     ctx.closePath(); ctx.fill();
     ctx.shadowBlur=0;
-    // 机身腹部阴影
-    const sh=ctx.createLinearGradient(0,2,0,7);
-    sh.addColorStop(0,'rgba(0,0,0,0)');
-    sh.addColorStop(1,'rgba(0,0,0,0.45)');
-    ctx.fillStyle=sh;
+    // 顶部高光
+    ctx.fillStyle='rgba(255,255,255,0.5)';
     ctx.beginPath();
-    ctx.moveTo(24,2); ctx.lineTo(8,5); ctx.lineTo(-14,5);
-    ctx.quadraticCurveTo(-22,5, -26,2); ctx.lineTo(-26,3);
-    ctx.quadraticCurveTo(-22,6, -14,7); ctx.lineTo(8,7);
-    ctx.quadraticCurveTo(22,5, 28,0); ctx.lineTo(24,2);
-    ctx.closePath(); ctx.fill();
-    // 机身顶部金属高光
-    const hl=ctx.createLinearGradient(0,-7,0,0);
-    hl.addColorStop(0,'rgba(255,255,255,0.75)'); hl.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle=hl;
-    ctx.beginPath();
-    ctx.moveTo(22,-3); ctx.quadraticCurveTo(10,-6, -6,-7); ctx.lineTo(-14,-6);
-    ctx.lineTo(-14,-5); ctx.quadraticCurveTo(8,-3, 20,-1);
+    ctx.moveTo(20,-2); ctx.quadraticCurveTo(8,-4, -6,-4); ctx.lineTo(-10,-3);
+    ctx.lineTo(-10,-2.5); ctx.quadraticCurveTo(6,-2, 18,-1);
     ctx.closePath(); ctx.fill();
 
-    // ===== 主翼：机身下方，向后下方延伸（侧视后掠翼） =====
+    // ===== 主翼：细长三角后掠翼（机身下方） =====
     ctx.fillStyle=COLORS.playerWing;
     ctx.beginPath();
-    ctx.moveTo(8,4);                      // 翼根前
-    ctx.lineTo(14,6);                     // 翼根前下
-    ctx.lineTo(-10,22);                   // 翼尖后下
-    ctx.lineTo(-22,20);                  // 翼尖后
-    ctx.lineTo(-18,5);                   // 翼根后
+    ctx.moveTo(6,3);                    // 翼根前
+    ctx.lineTo(-4,14);                  // 翼尖后下
+    ctx.lineTo(-14,13);                 // 翼尖后
+    ctx.lineTo(-12,4);                  // 翼根后
     ctx.closePath(); ctx.fill();
     // 翼上能量纹
     ctx.fillStyle='#7ffaff';
-    ctx.shadowBlur=6; ctx.shadowColor='#5ef7ff';
-    ctx.fillRect(-14,11, 14, 2);
+    ctx.shadowBlur=5; ctx.shadowColor='#5ef7ff';
+    ctx.fillRect(-10,8, 8, 1.5);
     ctx.shadowBlur=0;
 
-    // ===== 垂直尾翼：机身上方后部 =====
+    // ===== 垂直尾翼：细长后掠（机身上方后部） =====
     ctx.fillStyle=COLORS.playerWing;
     ctx.beginPath();
-    ctx.moveTo(-8,-6);                    // 尾翼底前
-    ctx.lineTo(-22,-6);                  // 尾翼底后
-    ctx.lineTo(-20,-22);                 // 尾翼顶后
-    ctx.lineTo(-14,-22);                 // 尾翼顶前
-    ctx.quadraticCurveTo(-8,-16, -8,-6); // 顶前圆角
+    ctx.moveTo(-4,-3);
+    ctx.lineTo(-14,-3);
+    ctx.lineTo(-12,-15);
+    ctx.lineTo(-8,-15);
+    ctx.quadraticCurveTo(-4,-10, -4,-3);
     ctx.closePath(); ctx.fill();
-    // 尾翼能量纹
     ctx.fillStyle='#7ffaff';
-    ctx.shadowBlur=5; ctx.shadowColor='#5ef7ff';
-    ctx.fillRect(-18,-19, 6, 11);
+    ctx.shadowBlur=4; ctx.shadowColor='#5ef7ff';
+    ctx.fillRect(-11,-13, 4, 8);
     ctx.shadowBlur=0;
 
-    // ===== 驾驶舱：机身上方突起透明罩（侧视典型特征） =====
-    ctx.fillStyle='rgba(180,240,255,0.55)';
+    // ===== 驾驶舱：水滴形透明罩 =====
+    ctx.fillStyle='rgba(180,240,255,0.65)';
     ctx.beginPath();
-    ctx.moveTo(0,-7);
-    ctx.quadraticCurveTo(6,-16, 14,-9);
-    ctx.quadraticCurveTo(13,-7, 8,-7);
+    ctx.moveTo(2,-4);
+    ctx.quadraticCurveTo(8,-10, 14,-5);
+    ctx.quadraticCurveTo(13,-3, 8,-3);
     ctx.closePath(); ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.lineWidth=0.8;
     ctx.beginPath();
-    ctx.moveTo(0,-7);
-    ctx.quadraticCurveTo(6,-16, 14,-9);
+    ctx.moveTo(2,-4); ctx.quadraticCurveTo(8,-10, 14,-5);
     ctx.stroke();
-    // 驾驶舱高光
-    ctx.fillStyle='rgba(255,255,255,0.85)';
-    ctx.beginPath(); ctx.ellipse(7,-11, 3,1, -0.4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.ellipse(8,-7, 2,0.8, -0.4, 0, Math.PI*2); ctx.fill();
 
-    // ===== 机头核心发光体（能量推进器） =====
+    // ===== 机头核心发光体 =====
     ctx.fillStyle=COLORS.playerCore;
-    ctx.shadowBlur=8; ctx.shadowColor='#fff';
-    ctx.beginPath(); ctx.arc(22,0, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur=6; ctx.shadowColor='#fff';
+    ctx.beginPath(); ctx.arc(21,0, 1.8, 0, Math.PI*2); ctx.fill();
     ctx.shadowBlur=0;
 
-    // ===== 速度升级指示灯（机身上方一排红光） =====
+    // ===== 速度升级指示灯（机身上方一排小光点） =====
     if(this.speedLevel>0){
-      const n = this.speedLevel;
-      for(let i=0;i<n;i++){
+      for(let i=0;i<this.speedLevel;i++){
         ctx.fillStyle='#ff5a3c';
-        ctx.shadowBlur=4; ctx.shadowColor='#ff5a3c';
-        ctx.fillRect(-12+i*3, -6, 2, 3);
+        ctx.shadowBlur=3; ctx.shadowColor='#ff5a3c';
+        ctx.fillRect(-8+i*3, -4, 1.5, 2);
       }
       ctx.shadowBlur=0;
     }
@@ -1710,12 +1788,11 @@ class Player{
       ctx.save();
       ctx.strokeStyle= this.shieldFlash>0 ? '#fff' : '#ffd24d';
       ctx.globalAlpha=0.4+0.3*Math.sin(this.engineFlick)+(this.shieldFlash>0?0.3:0);
-      ctx.lineWidth=2;
-      ctx.beginPath(); ctx.arc(sx,this.y,30,0,Math.PI*2); ctx.stroke();
-      // 显示护盾剩余血量（小圆点）
+      ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(sx,this.y,26,0,Math.PI*2); ctx.stroke();
       ctx.fillStyle='#ffd24d';
       for(let i=0;i<this.shieldHits;i++){
-        ctx.beginPath(); ctx.arc(sx-8+i*16, this.y-40, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx-8+i*16, this.y-36, 2.5, 0, Math.PI*2); ctx.fill();
       }
       ctx.restore();
     }
@@ -1952,6 +2029,8 @@ class Enemy{
     if(isBig) Audio2.bigExplode(); else Audio2.explode();
     if(this.dropCrystal) this.game.spawnCrystal(this.x,this.y);
     if(isBig && Math.random()<0.15) this.game.spawnLifeDrop(this.x,this.y);
+    // 稀有掉落：清屏晶体（5% 概率，大敌人额外+3%）
+    if(Math.random() < (isBig?0.08:0.05)) this.game.spawnBombCrystal(this.x,this.y);
     // 第六关·爆炸碎片：死后向四周散射能量子弹
     if(this.explodeOnDeath){
       const n = this.type==='debris_big' ? 10 : 6;
@@ -2796,6 +2875,7 @@ class Boss{
     }
     for(let i=0;i<3;i++) this.game.spawnCrystal(this.x+rand(-40,40),this.y+rand(-40,40));
     this.game.spawnLifeDrop(this.x, this.y);
+    this.game.spawnBombCrystal(this.x, this.y+20);
   }
   bossColor(){
     if(this.type===1) return COLORS.boss1;
@@ -3184,7 +3264,7 @@ class Game{
   }
   reset(){
     this.player=new Player(this);
-    this.bullets=[]; this.enemies=[]; this.obstacles=[]; this.crystals=[]; this.lifeDrops=[]; this.particles=[];
+    this.bullets=[]; this.enemies=[]; this.obstacles=[]; this.crystals=[]; this.lifeDrops=[]; this.bombCrystals=[]; this.particles=[];
     this.boss=null; this.camX=0;
     this.score=0; this.kills=0;
     this.levelIndex=0;
@@ -3229,6 +3309,7 @@ class Game{
   }
   spawnCrystal(x,y){ this.crystals.push(new Crystal(x,y)); }
   spawnLifeDrop(x,y){ this.lifeDrops.push(new LifeDrop(x,y)); }
+  spawnBombCrystal(x,y){ this.bombCrystals.push(new BombCrystal(x,y)); }
   findNearestEnemy(x,y){
     let best=null,bd=Infinity;
     for(const e of this.enemies){ if(e.dead) continue; const d=dist2(x,y,e.x,e.y); if(d<bd){bd=d;best=e;} }
@@ -3383,6 +3464,9 @@ class Game{
     for(const l of this.lifeDrops) l.update(dt, this.player);
     this.lifeDrops=this.lifeDrops.filter(l=>!l.dead);
 
+    for(const b of this.bombCrystals) b.update(dt, this.player);
+    this.bombCrystals=this.bombCrystals.filter(b=>!b.dead);
+
     for(const p of this.particles) p.update(dt);
     this.particles=this.particles.filter(p=>!p.dead);
 
@@ -3477,6 +3561,11 @@ class Game{
       if(l.dead) continue;
       if(aabb(pb,l.bounds())){ l.dead=true; l.apply(p); }
     }
+    // 清屏晶体拾取
+    for(const b of this.bombCrystals){
+      if(b.dead) continue;
+      if(aabb(pb,b.bounds())){ b.dead=true; b.apply(p); }
+    }
   }
 
   /* ------------------------------ 渲染 ------------------------------ */
@@ -3489,6 +3578,7 @@ class Game{
     if(this.state!=='TITLE'){
       for(const c of this.crystals) c.draw(CTX,this.camX);
       for(const l of this.lifeDrops) l.draw(CTX,this.camX);
+      for(const b of this.bombCrystals) b.draw(CTX,this.camX);
       for(const o of this.obstacles) o.draw(CTX,this.camX);
       for(const e of this.enemies) e.draw(CTX,this.camX);
       if(this.boss) this.boss.draw(CTX,this.camX);
