@@ -74,8 +74,8 @@ const documentMock = {
 };
 class AudioContextMock {
   get currentTime(){ return 0; }
-  createOscillator(){ return {type:'',frequency:{setValueAtTime(){}},connect(){},start(){},stop(){}}; }
-  createGain(){ return {gain:{setValueAtTime(){},linearRampToValueAtTime(){}},connect(){}}; }
+  createOscillator(){ return {type:'',frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},start(){},stop(){}}; }
+  createGain(){ return {gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){}}; }
 }
 const windowMock = {
   AudioContext: AudioContextMock,
@@ -417,22 +417,66 @@ test('maxBullets 上限为 800', ()=>{
   if(sandbox.CFG.maxBullets < 800) throw new Error('maxBullets 应≥800, 实际 '+sandbox.CFG.maxBullets);
 });
 
-// T16b: 第六关后半段纯障碍——障碍物成丛生成，密度远高于前半段
-test('第六关后半段障碍物成丛生成（密度更高）', ()=>{
+// T20: 第六关后半段障碍物密度降低（间隔 ≈ 1100，约为之前的 1/5）
+test('第六关后半段障碍物密度降低', ()=>{
   const g = makeGame(5);
-  g.scrollDistance = g.level.obstacleOnlyFrom + 200; // 进入纯障碍段
+  g.scrollDistance = g.level.obstacleOnlyFrom + 100;
   const beforeObs = g.obstacles.length;
-  // 推进 600 像素（约 3 次 spawn 周期）
+  // 推进 3000 像素
   const dt = 0.5;
-  const ticks = Math.ceil(600 / (g.level.scrollSpeed * dt));
+  const dist = 3000;
+  const ticks = Math.ceil(dist / (g.level.scrollSpeed * dt));
   for(let i=0;i<ticks;i++){
     g.camX += g.level.scrollSpeed * dt;
     g.scrollDistance += g.level.scrollSpeed * dt;
     g.obstacleSpawner.update(dt);
   }
   const added = g.obstacles.length - beforeObs;
-  // 至少生成 4 个障碍物（一丛 2-3 个 × 至少 2 丛）
-  if(added < 4) throw new Error(`后半段障碍物生成不足: 仅 ${added} 个`);
+  // 3000 像素 / 1100 间隔 ≈ 3 丛，每丛 2-6 个 → 6-18 个障碍物
+  // 关键校验：密度应明显低于改前（改前 220 间隔时会生成 ≈ 13 丛 × 6 = 78 个）
+  if(added > 25) throw new Error(`障碍物仍然太密: ${added} 个（间隔应为 ≈1100）`);
+  if(added < 2) throw new Error(`障碍物生成失败: 仅 ${added} 个`);
+});
+
+// T21: Boss 死亡后进入 LEVEL_CLEAR 状态，3 秒后才进入 LEVEL_OUT
+test('Boss 死亡后等待 3 秒拾取掉落物', ()=>{
+  const W = sandbox.W, H = sandbox.H;
+  const g = makeGame(0);   // 第一关，无 levelIndex 越界
+  // 触发 boss
+  g.scrollDistance = g.level.length + 100;
+  g.bossTriggered = true;
+  // 给一个 boss 实例
+  g.boss = new sandbox.Boss(g, 1);
+  g.boss.x = g.camX + W - 200;   // 把 boss 拉近屏内以便更新激活攻击
+  // 让 boss 立即死亡
+  g.boss.takeDamage(g.boss.hp);   // 触发 die() 设置 dead=true
+  // 更新一帧，game.update 检测到 boss.dead 后应进入 LEVEL_CLEAR
+  g.update(0.01);
+  if(g.state !== 'LEVEL_CLEAR') throw new Error(`Boss 死亡后应进入 LEVEL_CLEAR, 实际 ${g.state}`);
+  // 推进 2 秒，仍应为 LEVEL_CLEAR
+  for(let i=0;i<200;i++) g.update(0.01);
+  if(g.state !== 'LEVEL_CLEAR') throw new Error(`2 秒后应仍为 LEVEL_CLEAR, 实际 ${g.state}`);
+  // 推进到 3 秒以上，应切换到 LEVEL_OUT
+  for(let i=0;i<110;i++) g.update(0.01);
+  if(g.state !== 'LEVEL_OUT') throw new Error(`3 秒后应切换到 LEVEL_OUT, 实际 ${g.state}`);
+});
+
+// T16b: 第六关后半段纯障碍——障碍物成丛生成（每丛 2-3 个）
+test('第六关后半段障碍物成丛生成（密度更高）', ()=>{
+  const g = makeGame(5);
+  g.scrollDistance = g.level.obstacleOnlyFrom + 200; // 进入纯障碍段
+  const beforeObs = g.obstacles.length;
+  // 推进 2400 像素（覆盖约 2 丛，间隔 ≈1100）
+  const dt = 0.5;
+  const ticks = Math.ceil(2400 / (g.level.scrollSpeed * dt));
+  for(let i=0;i<ticks;i++){
+    g.camX += g.level.scrollSpeed * dt;
+    g.scrollDistance += g.level.scrollSpeed * dt;
+    g.obstacleSpawner.update(dt);
+  }
+  const added = g.obstacles.length - beforeObs;
+  // 2400 像素 / 1100 间隔 ≈ 2 丛，每丛 2-3 个 → 4-6 个障碍物
+  if(added < 2) throw new Error(`后半段障碍物生成不足: 仅 ${added} 个`);
 });
 
 // T17: CFG 配置项存在

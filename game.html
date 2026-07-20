@@ -979,7 +979,7 @@ class ObstacleSpawner{
         && this.game.scrollDistance >= this.game.level.obstacleOnlyFrom;
       if(inObstacleOnly){
         this.spawnCluster();   // 一次生成一组（2-3 个）障碍
-        this.nextDist += 220 + rand(-40,80);   // 短间隔（≈220），高密度
+        this.nextDist += 1100 + rand(-100,200);   // 大间隔（≈1100），密度降至约 1/5
       } else {
         this.spawn();
         this.nextDist += this.interval + rand(-80,150);
@@ -3223,11 +3223,23 @@ class Game{
         this.shake=1.0; this.flash=0.6;
         this.boss=null;
         if(this.levelIndex<LEVELS.length-1){
-          // 进入过关过渡：飞机飞出右端
-          this.state='LEVEL_OUT';
+          // 进入过关停留：给玩家 3 秒拾取 Boss 掉落
+          this.state='LEVEL_CLEAR';
           this.transitionTimer=0;
+          this.toast('BOSS 击破！');
         }
         else { this.state='WIN'; }
+      }
+    }
+
+    // 过关停留：3 秒让玩家收集 Boss 掉落物，然后飞出右端
+    if(this.state==='LEVEL_CLEAR'){
+      this.transitionTimer+=dt;
+      // 玩家仍可控（移动/开火），但关卡滚动停止
+      // 拾取物仍能被吸取（player.update 会处理）
+      if(this.transitionTimer >= 3.0){
+        this.state='LEVEL_OUT';
+        this.transitionTimer=0;
       }
     }
 
