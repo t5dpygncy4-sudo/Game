@@ -74,8 +74,13 @@ const documentMock = {
 };
 class AudioContextMock {
   get currentTime(){ return 0; }
-  createOscillator(){ return {type:'',frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},start(){},stop(){}}; }
-  createGain(){ return {gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){}}; }
+  get sampleRate(){ return 44100; }
+  createOscillator(){ return {type:'',frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){return this;},start(){},stop(){}}; }
+  createGain(){ return {gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){return this;}}; }
+  createBuffer(){ return {getChannelData(){ return new Float32Array(1024); }}; }
+  createBufferSource(){ return {buffer:null,connect(){return this;},start(){},stop(){}}; }
+  createBiquadFilter(){ return {type:'',frequency:{value:0},connect(){return this;}}; }
+  get destination(){ return {}; }
 }
 const windowMock = {
   AudioContext: AudioContextMock,
@@ -714,6 +719,42 @@ test('Player 新秀气外形绘制不抛异常', ()=>{
   g.player.draw(ctx, 0);
   g.player.shieldHits = 3;
   g.player.draw(ctx, 0);
+});
+
+// T37: Audio2 新增丰富音效方法（不抛异常）
+test('Audio2 新增丰富音效方法', ()=>{
+  sandbox.Audio2.init();
+  // 应包含所有新方法
+  const methods = ['shoot','laser','missile','hit','explode','bigExplode','pickup','levelup','alarm','hurt','bossWarn','bossDead','levelStart','screenClear','shield','playerDead','win','chord','noise'];
+  for(const m of methods){
+    if(typeof sandbox.Audio2[m] !== 'function') throw new Error('缺少方法: '+m);
+  }
+  // 调用所有方法不应抛异常
+  sandbox.Audio2.shoot();
+  sandbox.Audio2.laser();
+  sandbox.Audio2.missile();
+  sandbox.Audio2.hit();
+  sandbox.Audio2.explode();
+  sandbox.Audio2.bigExplode();
+  sandbox.Audio2.pickup();
+  sandbox.Audio2.levelup();
+  sandbox.Audio2.alarm();
+  sandbox.Audio2.hurt();
+  sandbox.Audio2.bossWarn();
+  sandbox.Audio2.bossDead();
+  sandbox.Audio2.levelStart();
+  sandbox.Audio2.screenClear();
+  sandbox.Audio2.shield();
+  sandbox.Audio2.playerDead();
+  sandbox.Audio2.win();
+});
+
+// T38: 僚机新外形绘制不抛异常
+test('Wingman 新流线型外形绘制不抛异常', ()=>{
+  const g = makeGame();
+  g.player.abilities.add('wingman');
+  g.player.wingmen = [ new sandbox.Wingman(g.player, 0) ];
+  g.player.wingmen.forEach(w=>{ w.t = 1.0; w.draw(canvas.getContext(), 0); });
 });
 
 // T16b: 第六关后半段纯障碍——障碍物成丛生成（每丛 2-3 个）
