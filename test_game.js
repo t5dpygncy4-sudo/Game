@@ -120,7 +120,7 @@ vm.runInContext(code, sandbox);
 // const/let 不会挂到 globalThis，所以追加导出
 const exportLine = `
 globalThis.__exports = {
-  Game, LEVELS, CFG, COLORS, Input, Audio2,
+  Game, LEVELS, CFG, COLORS, DIFFICULTY, DIFFICULTY_ORDER, Input, Audio2,
   Player, Wingman, Bullet, Enemy, Boss,
   Obstacle, ObstacleSpawner, Starfield, WAVE_TEMPLATES, UPGRADES,
   Crystal, LifeDrop, BombCrystal,
@@ -795,6 +795,190 @@ test('Boss6 阶段切换：>50% P1, 25-50% P2, <25% P3', ()=>{
   b.hp = b.maxHp * 0.2;
   b.update(0.01);
   if(b.phase !== 3) throw new Error('hp<25% 应为 phase 3, 实际 '+b.phase);
+});
+
+// T19: 难度系统配置存在且系数正确
+test('DIFFICULTY 配置存在且系数正确', ()=>{
+  if(!sandbox.DIFFICULTY) throw new Error('DIFFICULTY 配置不存在');
+  const d = sandbox.DIFFICULTY;
+  if(d.easy.fireMul !== 1.3) throw new Error('easy fireMul 应为 1.3, 实际 '+d.easy.fireMul);
+  if(d.normal.fireMul !== 1.0) throw new Error('normal fireMul 应为 1.0, 实际 '+d.normal.fireMul);
+  if(d.hard.fireMul !== 0.7) throw new Error('hard fireMul 应为 0.7, 实际 '+d.hard.fireMul);
+  if(d.easy.hpMul !== 1.0) throw new Error('easy hpMul 应为 1.0, 实际 '+d.easy.hpMul);
+  if(d.normal.hpMul !== 1.0) throw new Error('normal hpMul 应为 1.0, 实际 '+d.normal.hpMul);
+  if(d.hard.hpMul !== 1.5) throw new Error('hard hpMul 应为 1.5, 实际 '+d.hard.hpMul);
+  if(!sandbox.DIFFICULTY_ORDER || sandbox.DIFFICULTY_ORDER.length !== 3) throw new Error('DIFFICULTY_ORDER 应为 3 项');
+  if(sandbox.DIFFICULTY_ORDER[0] !== 'easy' || sandbox.DIFFICULTY_ORDER[1] !== 'normal' || sandbox.DIFFICULTY_ORDER[2] !== 'hard')
+    throw new Error('DIFFICULTY_ORDER 顺序错误: '+sandbox.DIFFICULTY_ORDER);
+});
+
+// T20: Game 默认难度为 normal + fireScale 计算
+test('Game 默认难度为 normal，fireScale 计算正确', ()=>{
+  const g = new sandbox.Game();
+  if(g.difficulty !== 'normal') throw new Error('默认难度应为 normal, 实际 '+g.difficulty);
+  // normal: fireMul=1.0, fireScale=1.0
+  if(Math.abs(g.fireScale() - 1.0) > 0.0001) throw new Error('normal fireScale 应为 1.0, 实际 '+g.fireScale());
+  // easy: fireMul=1.3, fireScale=1/1.3
+  g.difficulty = 'easy';
+  if(Math.abs(g.fireScale() - 1/1.3) > 0.0001) throw new Error('easy fireScale 应为 '+(1/1.3)+', 实际 '+g.fireScale());
+  // hard: fireMul=0.7, fireScale=1/0.7
+  g.difficulty = 'hard';
+  if(Math.abs(g.fireScale() - 1/0.7) > 0.0001) throw new Error('hard fireScale 应为 '+(1/0.7)+', 实际 '+g.fireScale());
+});
+
+// T21: A/D 键在 TITLE 状态循环切换难度
+test('A/D 键在 TITLE 状态循环切换难度', ()=>{
+  const g = new sandbox.Game();
+  g.state = 'TITLE';
+  sandbox.Input.pressed = {};
+  if(g.difficulty !== 'normal') throw new Error('初始难度应为 normal');
+  // 按 D：normal -> hard
+  sandbox.Input.pressed['d'] = true;
+  g.update(0.01);
+  sandbox.Input.pressed = {};
+  if(g.difficulty !== 'hard') throw new Error('按 D 后应为 hard, 实际 '+g.difficulty);
+  // 再按 D：hard -> easy（循环到下一个）
+  sandbox.Input.pressed['d'] = true;
+  g.update(0.01);
+  sandbox.Input.pressed = {};
+  if(g.difficulty !== 'easy') throw new Error('再按 D 应循环到 easy, 实际 '+g.difficulty);
+  // 再按 D：easy -> normal
+  sandbox.Input.pressed['d'] = true;
+  g.update(0.01);
+  sandbox.Input.pressed = {};
+  if(g.difficulty !== 'normal') throw new Error('再按 D 应循环到 normal, 实际 '+g.difficulty);
+  // 按 A：normal -> easy（反向）
+  sandbox.Input.pressed['a'] = true;
+  g.update(0.01);
+  sandbox.Input.pressed = {};
+  if(g.difficulty !== 'easy') throw new Error('按 A 从 normal 应到 easy, 实际 '+g.difficulty);
+  // 再按 A：easy -> hard（循环）
+  sandbox.Input.pressed['a'] = true;
+  g.update(0.01);
+  sandbox.Input.pressed = {};
+  if(g.difficulty !== 'hard') throw new Error('按 A 从 easy 应到 hard, 实际 '+g.difficulty);
+});
+
+// T22: 敌人 HP 困难模式 +50%
+test('敌人 HP 困难模式 +50%（HP=base*hpClass*hpMul）', ()=>{
+  const g = makeGame(2); // 第三关 enemyHp=5
+  // normal 难度：asteroid_l hpClass=3 → 5*3=15
+  g.difficulty = 'normal';
+  const eN = new sandbox.Enemy('asteroid_l', 100, 100, g);
+  if(eN.maxHp !== 15) throw new Error('normal asteroid_l maxHp 应为 15, 实际 '+eN.maxHp);
+  // hard 难度：5*3*1.5=22.5 → round=23
+  g.difficulty = 'hard';
+  const eH = new sandbox.Enemy('asteroid_l', 100, 100, g);
+  if(eH.maxHp !== 23) throw new Error('hard asteroid_l maxHp 应为 23 (round(22.5)), 实际 '+eH.maxHp);
+  // easy 难度：与 normal 相同
+  g.difficulty = 'easy';
+  const eE = new sandbox.Enemy('asteroid_l', 100, 100, g);
+  if(eE.maxHp !== 15) throw new Error('easy asteroid_l maxHp 应为 15, 实际 '+eE.maxHp);
+  // 小敌人 hpClass=1: 5*1*1.5=7.5 → round=8
+  g.difficulty = 'hard';
+  const eSmall = new sandbox.Enemy('asteroid_s', 100, 100, g);
+  if(eSmall.maxHp !== 8) throw new Error('hard asteroid_s maxHp 应为 8 (round(7.5)), 实际 '+eSmall.maxHp);
+});
+
+// T23: Boss HP 困难模式 +50%
+test('Boss HP 困难模式 +50%（HP=hpMap*hpMul）', ()=>{
+  const g = makeGame(5);
+  // normal: Boss6 = 1200
+  g.difficulty = 'normal';
+  const bN = new sandbox.Boss(g, 6);
+  if(bN.maxHp !== 1200) throw new Error('normal Boss6 maxHp 应为 1200, 实际 '+bN.maxHp);
+  // hard: 1200*1.5=1800
+  g.difficulty = 'hard';
+  const bH = new sandbox.Boss(g, 6);
+  if(bH.maxHp !== 1800) throw new Error('hard Boss6 maxHp 应为 1800, 实际 '+bH.maxHp);
+  // easy: 与 normal 相同
+  g.difficulty = 'easy';
+  const bE = new sandbox.Boss(g, 6);
+  if(bE.maxHp !== 1200) throw new Error('easy Boss6 maxHp 应为 1200, 实际 '+bE.maxHp);
+  // Boss1: 140 * 1.5 = 210
+  g.difficulty = 'hard';
+  const b1 = new sandbox.Boss(g, 1);
+  if(b1.maxHp !== 210) throw new Error('hard Boss1 maxHp 应为 210, 实际 '+b1.maxHp);
+});
+
+// T24: 敌人 fireTimer 按难度调整（easy 慢 / hard 快）
+test('敌人 fireTimer 按难度调整：easy 减量小 / hard 减量大', ()=>{
+  const g = makeGame(2);
+  // 让敌人在屏内（满足 fireTimer 触发条件）
+  // normal: dt 减量 = 0.1 * 1.0 = 0.1
+  g.difficulty = 'normal';
+  const eN = new sandbox.Enemy('turret', 100, 100, g);
+  eN.fireTimer = 1.0;
+  eN.x = g.camX + 100;  // 在屏内
+  const beforeN = eN.fireTimer;
+  eN.update(0.1);
+  const deltaN = beforeN - eN.fireTimer;
+  if(Math.abs(deltaN - 0.1) > 0.001) throw new Error('normal 难度 fireTimer 减量应为 0.1, 实际 '+deltaN);
+
+  // easy: dt 减量 = 0.1 / 1.3 ≈ 0.0769
+  g.difficulty = 'easy';
+  const eE = new sandbox.Enemy('turret', 100, 100, g);
+  eE.fireTimer = 1.0;
+  eE.x = g.camX + 100;
+  const beforeE = eE.fireTimer;
+  eE.update(0.1);
+  const deltaE = beforeE - eE.fireTimer;
+  if(Math.abs(deltaE - 0.1/1.3) > 0.001) throw new Error('easy 难度 fireTimer 减量应为 '+(0.1/1.3).toFixed(4)+', 实际 '+deltaE.toFixed(4));
+
+  // hard: dt 减量 = 0.1 / 0.7 ≈ 0.1429
+  g.difficulty = 'hard';
+  const eH = new sandbox.Enemy('turret', 100, 100, g);
+  eH.fireTimer = 1.0;
+  eH.x = g.camX + 100;
+  const beforeH = eH.fireTimer;
+  eH.update(0.1);
+  const deltaH = beforeH - eH.fireTimer;
+  if(Math.abs(deltaH - 0.1/0.7) > 0.001) throw new Error('hard 难度 fireTimer 减量应为 '+(0.1/0.7).toFixed(4)+', 实际 '+deltaH.toFixed(4));
+});
+
+// T25: Boss fireTimer 按难度调整
+test('Boss fireTimer 按难度调整：easy 减量小 / hard 减量大', ()=>{
+  const g = makeGame(5);
+  // normal
+  g.difficulty = 'normal';
+  const bN = new sandbox.Boss(g, 1);
+  bN.entered = true;
+  bN.fireTimer = 1.0;
+  const beforeN = bN.fireTimer;
+  bN.update(0.1);
+  const deltaN = beforeN - bN.fireTimer;
+  if(Math.abs(deltaN - 0.1) > 0.001) throw new Error('normal Boss fireTimer 减量应为 0.1, 实际 '+deltaN);
+
+  // easy
+  g.difficulty = 'easy';
+  const bE = new sandbox.Boss(g, 1);
+  bE.entered = true;
+  bE.fireTimer = 1.0;
+  const beforeE = bE.fireTimer;
+  bE.update(0.1);
+  const deltaE = beforeE - bE.fireTimer;
+  if(Math.abs(deltaE - 0.1/1.3) > 0.001) throw new Error('easy Boss fireTimer 减量应为 '+(0.1/1.3).toFixed(4)+', 实际 '+deltaE.toFixed(4));
+
+  // hard
+  g.difficulty = 'hard';
+  const bH = new sandbox.Boss(g, 1);
+  bH.entered = true;
+  bH.fireTimer = 1.0;
+  const beforeH = bH.fireTimer;
+  bH.update(0.1);
+  const deltaH = beforeH - bH.fireTimer;
+  if(Math.abs(deltaH - 0.1/0.7) > 0.001) throw new Error('hard Boss fireTimer 减量应为 '+(0.1/0.7).toFixed(4)+', 实际 '+deltaH.toFixed(4));
+});
+
+// T26: drawTitle 在各难度下不抛异常
+test('drawTitle 各难度下绘制不抛异常', ()=>{
+  const g = new sandbox.Game();
+  g.state = 'TITLE';
+  for(const d of ['easy','normal','hard']){
+    g.difficulty = d;
+    try { g.drawTitle(); }
+    catch(e){ throw new Error(`drawTitle 难度=${d} 异常: ${e.message}`); }
+  }
 });
 
 // 跑测试

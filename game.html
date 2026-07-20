@@ -57,6 +57,14 @@ const CFG = {
   maxParticles: 500,
 };
 
+// 难度配置：fireMul=子弹发射间隔倍率（>1=更慢，<1=更快），hpMul=血量倍率
+const DIFFICULTY = {
+  easy:   { fireMul: 1.3, hpMul: 1.0, label: '简单', desc: '敌人子弹频率 -30%' },
+  normal: { fireMul: 1.0, hpMul: 1.0, label: '普通', desc: '标准难度' },
+  hard:   { fireMul: 0.7, hpMul: 1.5, label: '困难', desc: '敌人子弹频率 +30%, 血量 +50%' },
+};
+const DIFFICULTY_ORDER = ['easy','normal','hard'];
+
 const COLORS = {
   player: '#5ef7ff', playerCore:'#fff', playerEngine:'#ff9a3c', playerWing:'#2bb6cc',
   bullet:'#bffcff', laser:'#ff4d8d', missile:'#ffd24d',
@@ -1939,9 +1947,11 @@ class Enemy{
     this.dropCrystal = Math.random() < 0.25;
     this.setup();
     // HP 系统：以关卡 enemyHp 为基准（1/3/5），按敌人 hpClass 加权（小=1x，中=2x，大=3x）
+    // 难度调整：困难 hpMul=1.5，简单/普通 hpMul=1.0
     const baseHp = (game.level && game.level.enemyHp) ? game.level.enemyHp : 1;
     const hpClass = this.hpClass || 1;   // 默认小敌人 1x
-    this.maxHp = baseHp * hpClass;
+    const hpMul = DIFFICULTY[game.difficulty||'normal'].hpMul;
+    this.maxHp = Math.max(1, Math.round(baseHp * hpClass * hpMul));
     this.hp = this.maxHp;
   }
   setup(){
@@ -1996,12 +2006,12 @@ class Enemy{
       case 'miner':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*2)*30;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.4; this.shootAtPlayer(); }
         break;
       case 'turret':
         this.x+=this.vx*dt;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.5; this.shootFan(3,0.3); }
         break;
       case 'drone_swarm':
@@ -2011,19 +2021,19 @@ class Enemy{
       case 'laser_node':
         this.x+=this.vx*dt;
         this.charge+=dt;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=2.0; this.shootAtPlayer(); }
         break;
       case 'core_cell':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*2.5)*40;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.2; this.shootFan(3,0.25); }
         break;
       case 'defender':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*1.8)*50;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.0; this.shootAtPlayer(); }
         break;
       case 'seeker':
@@ -2034,13 +2044,13 @@ class Enemy{
       case 'fire_beast':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*3)*70;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=2.2; this.shootAtPlayer(); }
         break;
       case 'fire_snake':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*4+this.x*0.03)*45;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.6; this.shootFan(4,0.3); }
         break;
       case 'fire_bird':
@@ -2051,19 +2061,19 @@ class Enemy{
         this.x+=this.vx*dt;
         const dyb=this.game.player.y-this.y;
         this.y += clamp(dyb,-60,60)*dt;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=3.0; this.shootAtPlayer(); }
         break;
       case 'mutant_grunt':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*2.2)*32;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.8; this.shootCorrosive(); }
         break;
       case 'mutant_brute':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*1.4)*22;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=2.4; this.shootCorrosiveFan(3,0.32); }
         break;
       case 'mutant_crawler':
@@ -2104,7 +2114,7 @@ class Enemy{
       case 'ruin_core':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*1.5)*30;
-        this.fireTimer-=dt;
+        this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){
           this.fireTimer=2.0;
           // 发射碎片（召唤 debris 敌人）
@@ -2754,7 +2764,8 @@ class Boss{
     this.entered=false; this.dead=false;
     this.fireTimer=1.5; this.t=0; this.hitFlash=0;
     const hpMap={1:140,2:200,3:280,4:500,5:750,6:1200}; // boss6 巨型机器人血量最高
-    this.maxHp=hpMap[type]||140;
+    const hpMul = DIFFICULTY[game.difficulty||'normal'].hpMul;  // 难度调整：困难 1.5x
+    this.maxHp=Math.round((hpMap[type]||140) * hpMul);
     this.hp=this.maxHp;
     this.phase=1; this.dirY=1; this.alarmPlayed=false;
     this.laserBulletTimer=3.0;   // 首次激光子弹延迟
@@ -2789,7 +2800,7 @@ class Boss{
     const ratio=this.hp/this.maxHp;
     const newPhase = ratio>0.5?1:(ratio>0.25?2:3);
     if(newPhase!==this.phase){ this.phase=newPhase; this.game.toast('BOSS 阶段 '+this.phase); }
-    this.fireTimer-=dt;
+    this.fireTimer-=dt*this.game.fireScale();
     if(this.fireTimer<=0){
       if(this.type===1){
         if(this.phase===1){ this.fireTimer=1.4; this.fireFan(4,0.3); }
@@ -3391,8 +3402,13 @@ class Game{
     this.state='TITLE';
     this.starfield=new Starfield('space');
     this.titleSelected=0; // 选关：当前选中关卡索引（-1=从头开始，0-3=对应关卡）
+    this.difficulty='normal'; // 难度：easy/normal/hard
     this.reset();
   }
+  // 难度系数：用于敌人/Boss 子弹发射计时器的 dt 缩放（1/fireMul）
+  fireScale(){ return 1 / DIFFICULTY[this.difficulty||'normal'].fireMul; }
+  // 难度血量倍率
+  hpMul(){ return DIFFICULTY[this.difficulty||'normal'].hpMul; }
   reset(){
     this.player=new Player(this);
     this.bullets=[]; this.enemies=[]; this.obstacles=[]; this.crystals=[]; this.lifeDrops=[]; this.bombCrystals=[]; this.particles=[];
@@ -3481,6 +3497,17 @@ class Game{
       // 选关：上/下切换，回车开始选中关卡
       if(Input.justPressed('arrowup','w')){ this.titleSelected = (this.titleSelected - 1 + (LEVELS.length+1)) % (LEVELS.length+1); Audio2.hit(); }
       if(Input.justPressed('arrowdown','s')){ this.titleSelected = (this.titleSelected + 1) % (LEVELS.length+1); Audio2.hit(); }
+      // 难度：A=上一个，D=下一个
+      if(Input.justPressed('a')){
+        const idx = DIFFICULTY_ORDER.indexOf(this.difficulty);
+        this.difficulty = DIFFICULTY_ORDER[(idx-1+DIFFICULTY_ORDER.length)%DIFFICULTY_ORDER.length];
+        Audio2.hit();
+      }
+      if(Input.justPressed('d')){
+        const idx = DIFFICULTY_ORDER.indexOf(this.difficulty);
+        this.difficulty = DIFFICULTY_ORDER[(idx+1)%DIFFICULTY_ORDER.length];
+        Audio2.hit();
+      }
       if(Input.justPressed('enter')){
         const lvl = this.titleSelected===0 ? 0 : this.titleSelected-1; // 0=从头开始，1-4=对应关
         this.startGameAt(lvl);
@@ -3881,12 +3908,38 @@ class Game{
     CTX.fillStyle='#9ef'; CTX.font='18px monospace';
     CTX.fillText('沙罗曼蛇 X · 能量晶体升级版', W/2, 150);
 
+    // 难度选择（A/D 切换）
+    CTX.textBaseline='middle';
+    const diffY=192;
+    CTX.fillStyle='rgba(255,210,77,0.10)';
+    CTX.fillRect(W/2-180, diffY-18, 360, 36);
+    CTX.fillStyle='#9cf'; CTX.font='14px monospace';
+    CTX.textAlign='right';
+    CTX.fillText('难度', W/2-30, diffY);
+    CTX.textAlign='left';
+    CTX.fillStyle='#ffd24d'; CTX.font='bold 22px monospace';
+    CTX.shadowBlur=10; CTX.shadowColor='#ffd24d';
+    // 闪烁的左右箭头
+    if(Math.floor(performance.now()/400)%2===0){
+      CTX.fillStyle='#fff';
+      CTX.textAlign='right';
+      CTX.fillText('◀', W/2-15, diffY);
+      CTX.textAlign='left';
+      CTX.fillText('▶', W/2+90, diffY);
+      CTX.fillStyle='#ffd24d';
+    }
+    CTX.textAlign='center';
+    CTX.fillText(DIFFICULTY[this.difficulty].label, W/2+40, diffY);
+    CTX.shadowBlur=0;
+    CTX.fillStyle='#9cf'; CTX.font='12px monospace';
+    CTX.fillText(DIFFICULTY[this.difficulty].desc+'   [A / D 切换]', W/2, diffY+22);
+
     // 选关列表
     CTX.textBaseline='middle';
     CTX.font='bold 24px monospace';
     const options=['从头开始'];
     for(const lv of LEVELS) options.push(lv.name);
-    const startY=230;
+    const startY=240;
     const step=42;
     for(let i=0;i<options.length;i++){
       const y=startY+i*step;
