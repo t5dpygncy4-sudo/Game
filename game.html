@@ -3401,7 +3401,6 @@ class Game{
   constructor(){
     this.state='TITLE';
     this.starfield=new Starfield('space');
-    this.titleSelected=0; // 选关：当前选中关卡索引（-1=从头开始，0-3=对应关卡）
     this.difficulty='normal'; // 难度：easy/normal/hard
     this.reset();
   }
@@ -3494,9 +3493,6 @@ class Game{
     this.starfield.update(dt,bgSpeed);
 
     if(this.state==='TITLE'){
-      // 选关：上/下切换，回车开始选中关卡
-      if(Input.justPressed('arrowup','w')){ this.titleSelected = (this.titleSelected - 1 + (LEVELS.length+1)) % (LEVELS.length+1); Audio2.hit(); }
-      if(Input.justPressed('arrowdown','s')){ this.titleSelected = (this.titleSelected + 1) % (LEVELS.length+1); Audio2.hit(); }
       // 难度：A=上一个，D=下一个
       if(Input.justPressed('a')){
         const idx = DIFFICULTY_ORDER.indexOf(this.difficulty);
@@ -3509,8 +3505,7 @@ class Game{
         Audio2.hit();
       }
       if(Input.justPressed('enter')){
-        const lvl = this.titleSelected===0 ? 0 : this.titleSelected-1; // 0=从头开始，1-4=对应关
-        this.startGameAt(lvl);
+        this.startGameAt(0);
       }
       return;
     }
@@ -3518,7 +3513,6 @@ class Game{
       if(Input.justPressed('enter')){
         this.reset();
         this.state='TITLE';
-        this.titleSelected=0;
       }
       return;
     }
@@ -3899,84 +3893,93 @@ class Game{
     CTX.save();
     CTX.fillStyle='rgba(0,0,0,0.55)'; CTX.fillRect(0,0,W,H);
     CTX.textAlign='center';
-    const g=CTX.createLinearGradient(0,80,0,180);
+    // 标题
+    const g=CTX.createLinearGradient(0,90,0,200);
     g.addColorStop(0,'#5ef7ff'); g.addColorStop(1,'#ff4d8d');
-    CTX.fillStyle=g; CTX.font='bold 60px monospace';
-    CTX.shadowBlur=20; CTX.shadowColor='#5ef7ff';
-    CTX.fillText('SALAMANDER-X', W/2, 110);
+    CTX.fillStyle=g; CTX.font='bold 64px monospace';
+    CTX.shadowBlur=24; CTX.shadowColor='#5ef7ff';
+    CTX.textBaseline='middle';
+    CTX.fillText('SALAMANDER-X', W/2, 130);
     CTX.shadowBlur=0;
     CTX.fillStyle='#9ef'; CTX.font='18px monospace';
-    CTX.fillText('沙罗曼蛇 X · 能量晶体升级版', W/2, 150);
+    CTX.fillText('沙罗曼蛇 X · 能量晶体升级版', W/2, 180);
 
-    // 难度选择（A/D 切换）
-    CTX.textBaseline='middle';
-    const diffY=192;
-    CTX.fillStyle='rgba(255,210,77,0.10)';
-    CTX.fillRect(W/2-180, diffY-18, 360, 36);
+    // 难度选择卡片（居中突出）
+    const diff = DIFFICULTY[this.difficulty];
+    const cardY=290, cardW=520, cardH=140;
+    const cardX=W/2-cardW/2;
+    // 卡片背景
+    CTX.fillStyle='rgba(255,210,77,0.06)';
+    CTX.fillRect(cardX, cardY-cardH/2, cardW, cardH);
+    CTX.strokeStyle='rgba(255,210,77,0.35)';
+    CTX.lineWidth=1.5;
+    CTX.strokeRect(cardX, cardY-cardH/2, cardW, cardH);
+    // 卡片标签
     CTX.fillStyle='#9cf'; CTX.font='14px monospace';
-    CTX.textAlign='right';
-    CTX.fillText('难度', W/2-30, diffY);
-    CTX.textAlign='left';
-    CTX.fillStyle='#ffd24d'; CTX.font='bold 22px monospace';
-    CTX.shadowBlur=10; CTX.shadowColor='#ffd24d';
-    // 闪烁的左右箭头
-    if(Math.floor(performance.now()/400)%2===0){
-      CTX.fillStyle='#fff';
-      CTX.textAlign='right';
-      CTX.fillText('◀', W/2-15, diffY);
-      CTX.textAlign='left';
-      CTX.fillText('▶', W/2+90, diffY);
-      CTX.fillStyle='#ffd24d';
-    }
-    CTX.textAlign='center';
-    CTX.fillText(DIFFICULTY[this.difficulty].label, W/2+40, diffY);
+    CTX.fillText('— 难度选择 —', W/2, cardY-50);
+    // 当前难度名称
+    CTX.fillStyle='#ffd24d'; CTX.font='bold 40px monospace';
+    CTX.shadowBlur=14; CTX.shadowColor='#ffd24d';
+    CTX.fillText(diff.label, W/2, cardY);
     CTX.shadowBlur=0;
-    CTX.fillStyle='#9cf'; CTX.font='12px monospace';
-    CTX.fillText(DIFFICULTY[this.difficulty].desc+'   [A / D 切换]', W/2, diffY+22);
+    // 描述
+    CTX.fillStyle='#9cf'; CTX.font='14px monospace';
+    CTX.fillText(diff.desc, W/2, cardY+30);
+    // 切换提示 + 闪烁箭头
+    CTX.fillStyle='#cfe'; CTX.font='13px monospace';
+    CTX.fillText('按  A / D  切换难度', W/2, cardY+54);
+    if(Math.floor(performance.now()/400)%2===0){
+      CTX.fillStyle='#fff'; CTX.font='bold 22px monospace';
+      CTX.textAlign='right';
+      CTX.fillText('◀', cardX+38, cardY);
+      CTX.textAlign='left';
+      CTX.fillText('▶', cardX+cardW-38, cardY);
+      CTX.textAlign='center';
+    }
 
-    // 选关列表
-    CTX.textBaseline='middle';
-    CTX.font='bold 24px monospace';
-    const options=['从头开始'];
-    for(const lv of LEVELS) options.push(lv.name);
-    const startY=240;
-    const step=42;
-    for(let i=0;i<options.length;i++){
-      const y=startY+i*step;
-      const sel=(i===this.titleSelected);
-      if(sel){
-        // 选中项高亮背景
-        CTX.fillStyle='rgba(94,247,255,0.18)';
-        CTX.fillRect(W/2-220, y-step/2-2, 440, step+4);
-        // 左右箭头
-        if(Math.floor(performance.now()/400)%2===0){
-          CTX.fillStyle='#ffd24d';
-          CTX.font='bold 22px monospace';
-          CTX.textAlign='right';
-          CTX.fillText('▶', W/2-200, y);
-          CTX.textAlign='left';
-          CTX.fillText('◀', W/2+200, y);
-        }
-        CTX.fillStyle='#ffd24d';
-        CTX.font='bold 26px monospace';
-      }else{
-        CTX.fillStyle='#cfe';
-        CTX.font='22px monospace';
+    // 三个难度并列显示（当前高亮）
+    const pillY=400, pillW=120, pillH=36, pillGap=16;
+    const totalW = DIFFICULTY_ORDER.length*pillW + (DIFFICULTY_ORDER.length-1)*pillGap;
+    const startX = W/2 - totalW/2;
+    for(let i=0;i<DIFFICULTY_ORDER.length;i++){
+      const key = DIFFICULTY_ORDER[i];
+      const d = DIFFICULTY[key];
+      const px = startX + i*(pillW+pillGap);
+      const isCur = (key===this.difficulty);
+      if(isCur){
+        CTX.fillStyle='rgba(94,247,255,0.22)';
+        CTX.fillRect(px, pillY-pillH/2, pillW, pillH);
+        CTX.strokeStyle='#5ef7ff';
+        CTX.lineWidth=2;
+        CTX.strokeRect(px, pillY-pillH/2, pillW, pillH);
+        CTX.fillStyle='#5ef7ff'; CTX.font='bold 18px monospace';
+      } else {
+        CTX.strokeStyle='rgba(200,240,255,0.25)';
+        CTX.lineWidth=1;
+        CTX.strokeRect(px, pillY-pillH/2, pillW, pillH);
+        CTX.fillStyle='#9bb'; CTX.font='16px monospace';
       }
       CTX.textAlign='center';
-      CTX.fillText(options[i], W/2, y);
+      CTX.fillText(d.label, px+pillW/2, pillY);
     }
 
-    // 操作说明
-    CTX.textAlign='center';
-    CTX.fillStyle='#9ef'; CTX.font='15px monospace';
+    // 开始游戏提示（闪烁）
+    if(Math.floor(performance.now()/500)%2===0){
+      CTX.fillStyle='#5ef7ff'; CTX.font='bold 22px monospace';
+      CTX.shadowBlur=10; CTX.shadowColor='#5ef7ff';
+      CTX.fillText('▶  按 回车 开始游戏  ◀', W/2, 470);
+      CTX.shadowBlur=0;
+    }
+
+    // 操作说明（底部）
+    CTX.fillStyle='#9ef'; CTX.font='14px monospace';
     const help=[
-      '↑↓ / W S   选择关卡',
+      'A / D       切换难度',
       '回车       开始游戏',
       '',
       '游戏中：方向键移动  空格射击  数字键1-6升级  Shift清屏  P暂停',
     ];
-    help.forEach((l,i)=> CTX.fillText(l, W/2, H-90+i*20));
+    help.forEach((l,i)=> CTX.fillText(l, W/2, H-78+i*20));
     CTX.restore();
   }
   drawPaused(){
