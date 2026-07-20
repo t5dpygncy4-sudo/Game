@@ -537,11 +537,11 @@ test('追踪导弹速度提升 + 失去目标重选', ()=>{
   if(missile.target !== e2) throw new Error('导弹新目标应为新敌人 e2');
 });
 
-// T26: 道具磁吸——玩家靠近时晶体被吸过来
+// T26: 道具磁吸——玩家靠近时晶体被吸过来（仅接触时吸附）
 test('Crystal 磁吸：玩家靠近时被吸引', ()=>{
   const g = makeGame(0);
-  // 在玩家右侧 100 像素放置晶体（在磁吸范围 150 内）
-  const c = new sandbox.Crystal(g.player.x + 100, g.player.y);
+  // 在玩家右侧 40 像素放置晶体（在磁吸范围 55 内）
+  const c = new sandbox.Crystal(g.player.x + 40, g.player.y);
   g.crystals.push(c);
   const x0 = c.x, y0 = c.y;
   // 推进 30 帧（约 0.5s）
@@ -557,8 +557,8 @@ test('Crystal 磁吸：玩家靠近时被吸引', ()=>{
 // T27: 道具磁吸——玩家远离时晶体维持基础左飘
 test('Crystal 远离时不被吸引', ()=>{
   const g = makeGame(0);
-  // 在玩家右侧 500 像素放置晶体（远超磁吸范围 150）
-  const c = new sandbox.Crystal(g.player.x + 500, g.player.y);
+  // 在玩家右侧 200 像素放置晶体（远超磁吸范围 55）
+  const c = new sandbox.Crystal(g.player.x + 200, g.player.y);
   g.crystals.push(c);
   const x0 = c.x;
   // 推进 30 帧
@@ -570,10 +570,10 @@ test('Crystal 远离时不被吸引', ()=>{
 // T28: 生命道具磁吸
 test('LifeDrop 磁吸：玩家靠近时被吸引', ()=>{
   const g = makeGame(0);
-  const l = new sandbox.LifeDrop(g.player.x + 150, g.player.y);
+  const l = new sandbox.LifeDrop(g.player.x + 40, g.player.y);
   g.lifeDrops.push(l);
   const x0 = l.x;
-  // LifeDrop 磁吸范围 180，玩家正好在边界
+  // LifeDrop 磁吸范围 60
   for(let i=0;i<30;i++) l.update(0.016, g.player);
   // 应被吸引（x 应明显减小）
   if(l.x >= x0) throw new Error(`LifeDrop 应被吸过来, x0=${x0}, x=${l.x}`);
@@ -690,7 +690,7 @@ test('BombCrystal 不伤害 Boss', ()=>{
 // T34: BombCrystal 磁吸
 test('BombCrystal 磁吸：玩家靠近时被吸引', ()=>{
   const g = makeGame(0);
-  const b = new sandbox.BombCrystal(g.player.x + 150, g.player.y);
+  const b = new sandbox.BombCrystal(g.player.x + 40, g.player.y);
   g.bombCrystals.push(b);
   const x0 = b.x;
   for(let i=0;i<30;i++) b.update(0.016, g.player);
