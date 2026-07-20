@@ -1852,29 +1852,29 @@ class Player{
     ctx.lineTo(-10,-2); ctx.quadraticCurveTo(8,-2, 20,-1);
     ctx.closePath(); ctx.fill();
 
-    // ===== 后掠翼（科幻大三角翼） =====
+    // ===== 后掠翼（科幻三角翼，上大下小） =====
     ctx.fillStyle=COLORS.playerWing;
-    // 上翼
+    // 上翼（较大）
     ctx.beginPath();
     ctx.moveTo(2,-3);
     ctx.lineTo(-4,-4);
-    ctx.lineTo(-22,-16);
-    ctx.lineTo(-26,-10);
-    ctx.lineTo(-18,-2);
+    ctx.lineTo(-20,-11);
+    ctx.lineTo(-24,-7);
+    ctx.lineTo(-16,-2);
     ctx.closePath(); ctx.fill();
-    // 下翼
+    // 下翼（较小）
     ctx.beginPath();
     ctx.moveTo(2,3);
     ctx.lineTo(-4,4);
-    ctx.lineTo(-22,16);
-    ctx.lineTo(-26,10);
-    ctx.lineTo(-18,2);
+    ctx.lineTo(-16,8);
+    ctx.lineTo(-19,5);
+    ctx.lineTo(-14,2);
     ctx.closePath(); ctx.fill();
     // 翼上能量纹
     ctx.fillStyle='#7ffaff';
     ctx.shadowBlur=5; ctx.shadowColor='#5ef7ff';
-    ctx.fillRect(-20,-13, 12, 1.5);
-    ctx.fillRect(-20,11.5, 12, 1.5);
+    ctx.fillRect(-17,-9, 8, 1.2);
+    ctx.fillRect(-15,6, 6, 1);
     ctx.shadowBlur=0;
 
     // ===== 驾驶舱：流线型透明罩 =====
