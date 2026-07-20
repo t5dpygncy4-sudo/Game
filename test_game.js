@@ -607,29 +607,72 @@ test('LifeDrop 改为红色晶体（不抛异常）', ()=>{
   l.draw(canvas.getContext(), 0);
 });
 
-// T32: BombCrystal 类存在 + 拾取后清屏
-test('BombCrystal 拾取后清空敌人和子弹', ()=>{
+// T32: BombCrystal 拾取后增加库存（不立即触发）
+test('BombCrystal 拾取后增加库存（最多 2）', ()=>{
   const g = makeGame(0);
-  // 放入 2 个敌人 + 3 发敌方子弹 + 2 发友方子弹
+  if(g.player.bombs !== 0) throw new Error('初始 bombs 应为 0, 实际 '+g.player.bombs);
+  // 第一次拾取：库存 +1，不应清屏
+  const b1 = new sandbox.BombCrystal(g.player.x+50, g.player.y);
+  b1.apply(g.player);
+  if(g.player.bombs !== 1) throw new Error('第一次拾取后 bombs 应为 1, 实际 '+g.player.bombs);
+  // 第二次拾取：库存 +1 = 2，仍不触发
+  const b2 = new sandbox.BombCrystal(g.player.x+50, g.player.y);
+  b2.apply(g.player);
+  if(g.player.bombs !== 2) throw new Error('第二次拾取后 bombs 应为 2, 实际 '+g.player.bombs);
+});
+
+// T32b: 库存满 2 时再拾取立即触发清屏
+test('库存满 2 时再拾取立即清屏', ()=>{
+  const g = makeGame(0);
+  // 准备敌人 + 子弹
   g.enemies.push(new sandbox.Enemy('asteroid_s', g.camX + 100, 100, g));
   g.enemies.push(new sandbox.Enemy('asteroid_s', g.camX + 200, 200, g));
   g.bullets.push(new sandbox.Bullet(g.camX+100,100,-200,0,{w:8,h:8,color:'#f80',friendly:false}));
   g.bullets.push(new sandbox.Bullet(g.camX+150,150,-200,0,{w:8,h:8,color:'#f80',friendly:false}));
-  g.bullets.push(new sandbox.Bullet(g.camX+200,200,-200,0,{w:8,h:8,color:'#f80',friendly:false}));
   g.bullets.push(new sandbox.Bullet(g.camX+100,100, 200,0,{w:8,h:8,color:'#0ff',friendly:true}));
-  g.bullets.push(new sandbox.Bullet(g.camX+100,100, 200,0,{w:8,h:8,color:'#0ff',friendly:true}));
-  // 应用 BombCrystal
-  const bomb = new sandbox.BombCrystal(g.player.x, g.player.y);
-  bomb.apply(g.player);
+  // 满库存
+  g.player.bombs = 2;
+  // 再拾取：应立即清屏，库存仍为 2
+  const b = new sandbox.BombCrystal(g.player.x, g.player.y);
+  b.apply(g.player);
+  if(g.player.bombs !== 2) throw new Error('满库存再拾取后应保持 2, 实际 '+g.player.bombs);
   // 敌人应全部死亡
-  const aliveEnemies = g.enemies.filter(e=>!e.dead);
-  if(aliveEnemies.length !== 0) throw new Error('应清除所有敌人, 剩余 '+aliveEnemies.length);
+  const alive = g.enemies.filter(e=>!e.dead);
+  if(alive.length !== 0) throw new Error('应清除所有敌人, 剩余 '+alive.length);
   // 敌方子弹应被清空
   const enemyBullets = g.bullets.filter(b=>!b.friendly);
   if(enemyBullets.length !== 0) throw new Error('应清空敌方子弹, 剩余 '+enemyBullets.length);
   // 友方子弹应保留
   const friendlyBullets = g.bullets.filter(b=>b.friendly);
-  if(friendlyBullets.length !== 2) throw new Error('友方子弹应保留 2 发, 实际 '+friendlyBullets.length);
+  if(friendlyBullets.length !== 1) throw new Error('友方子弹应保留 1 发, 实际 '+friendlyBullets.length);
+});
+
+// T32c: Shift 触发清屏，消耗 1 库存
+test('Shift 触发清屏消耗 1 库存', ()=>{
+  const g = makeGame(0);
+  g.enemies.push(new sandbox.Enemy('asteroid_s', g.camX + 100, 100, g));
+  g.bullets.push(new sandbox.Bullet(g.camX+100,100,-200,0,{w:8,h:8,color:'#f80',friendly:false}));
+  g.player.bombs = 2;
+  // 模拟 Shift 按下
+  sandbox.Input.pressed['shift'] = true;
+  g.player.update(0.016);
+  sandbox.Input.pressed['shift'] = false;
+  if(g.player.bombs !== 1) throw new Error('Shift 后 bombs 应减 1 = 1, 实际 '+g.player.bombs);
+  // 敌人应死亡
+  const alive = g.enemies.filter(e=>!e.dead);
+  if(alive.length !== 0) throw new Error('Shift 触发应清除所有敌人, 剩余 '+alive.length);
+});
+
+// T32d: 无库存时按 Shift 不触发
+test('无库存时按 Shift 不触发', ()=>{
+  const g = makeGame(0);
+  g.enemies.push(new sandbox.Enemy('asteroid_s', g.camX + 100, 100, g));
+  g.player.bombs = 0;
+  sandbox.Input.pressed['shift'] = true;
+  g.player.update(0.016);
+  sandbox.Input.pressed['shift'] = false;
+  const alive = g.enemies.filter(e=>!e.dead);
+  if(alive.length !== 1) throw new Error('无库存不应清屏, 剩余敌人 '+alive.length);
 });
 
 // T33: BombCrystal 不伤害 Boss
@@ -639,8 +682,8 @@ test('BombCrystal 不伤害 Boss', ()=>{
   boss.entered = true;
   g.boss = boss;
   const hpBefore = boss.hp;
-  const bomb = new sandbox.BombCrystal(g.player.x, g.player.y);
-  bomb.apply(g.player);
+  // 通过 triggerScreenClear 验证
+  g.triggerScreenClear();
   if(boss.hp !== hpBefore) throw new Error('BombCrystal 不应伤害 Boss, hp 前='+hpBefore+' 后='+boss.hp);
 });
 

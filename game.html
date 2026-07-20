@@ -24,7 +24,7 @@
 <body>
 <div id="wrap"><canvas id="game" width="900" height="600"></canvas></div>
 <div id="hint">
-  方向键/WASD 移动 · 空格/J 射击 · <b>数字键 1-6 升级对应能力</b> · P 暂停 · 回车 开始
+  方向键/WASD 移动 · 空格/J 射击 · <b>数字键 1-6 升级对应能力</b> · Shift 清屏 · P 暂停 · 回车 开始
 </div>
 
 <script>
@@ -746,31 +746,16 @@ class BombCrystal{
     if(this.x<-40) this.dead=true;
   }
   apply(player){
-    const g=player.game;
-    Audio2.levelup();
-    // 杀死屏幕内所有敌人
-    let killCount=0;
-    for(const e of g.enemies){
-      if(e.dead) continue;
-      if(e.x>g.camX-40 && e.x<g.camX+W+40){
-        e.hp=0; e.dead=true; e.die();
-        killCount++;
-      }
+    // 可携带清屏晶体：库存满则立即触发，否则 +1 库存
+    if(player.bombs >= 2){
+      player.game.triggerScreenClear();
+      player.game.toast('库存已满，立即清屏！');
+    } else {
+      player.bombs++;
+      Audio2.pickup();
+      spawnExplosion(player.game.particles,this.x,this.y,'#3affd2',12,1);
+      player.game.toast('清屏晶体 +1  (持有 '+player.bombs+'/2, Shift 发动)');
     }
-    // 清空所有敌方子弹（保留友方）
-    let bulletCount=0;
-    for(let i=g.bullets.length-1;i>=0;i--){
-      if(!g.bullets[i].friendly){
-        const b=g.bullets[i];
-        spawnExplosion(g.particles,b.x,b.y,'#3affd2',6,0.6);
-        g.bullets.splice(i,1);
-        bulletCount++;
-      }
-    }
-    // 清屏爆炸特效
-    spawnExplosion(g.particles, g.camX+W/2, H/2, '#3affd2', 60, 3);
-    g.shake=0.8;
-    g.toast('清屏！清除 '+killCount+' 敌人 + '+bulletCount+' 子弹');
   }
   draw(ctx,camX){
     const sx=this.x-camX;
@@ -1398,6 +1383,7 @@ class Player{
     this.shieldHits=0;
     this.wingmen=[];
     this.shieldFlash=0;
+    this.bombs=0;             // 携带清屏晶体（上限 2，Shift 发动）
     this.laserActive=false; // 激光持续激活标志
     this.laserT=0;          // 激光脉动时钟
   }
@@ -1490,6 +1476,11 @@ class Player{
     if(!transitioning){
       // 数字键升级
       for(let i=1;i<=6;i++){ if(Input.justPressed(String(i))) this.tryUpgrade(i); }
+      // Shift 触发清屏晶体
+      if(Input.justPressed('shift') && this.bombs>0){
+        this.bombs--;
+        this.game.triggerScreenClear();
+      }
 
       const maxSp = CFG.playerSpeedMax + this.speedLevel*110;  // 每级+110速度（增强效果）
       const accel = 2600 + this.speedLevel*700;                // 每级+700加速度（增强响应）
@@ -3310,6 +3301,30 @@ class Game{
   spawnCrystal(x,y){ this.crystals.push(new Crystal(x,y)); }
   spawnLifeDrop(x,y){ this.lifeDrops.push(new LifeDrop(x,y)); }
   spawnBombCrystal(x,y){ this.bombCrystals.push(new BombCrystal(x,y)); }
+  // 触发清屏：杀光屏幕内敌人 + 清空敌方子弹，Boss 不受伤害但子弹被清
+  triggerScreenClear(){
+    let killCount=0;
+    for(const e of this.enemies){
+      if(e.dead) continue;
+      if(e.x>this.camX-40 && e.x<this.camX+W+40){
+        e.hp=0; e.dead=true; e.die();
+        killCount++;
+      }
+    }
+    let bulletCount=0;
+    for(let i=this.bullets.length-1;i>=0;i--){
+      if(!this.bullets[i].friendly){
+        const b=this.bullets[i];
+        spawnExplosion(this.particles,b.x,b.y,'#3affd2',6,0.6);
+        this.bullets.splice(i,1);
+        bulletCount++;
+      }
+    }
+    spawnExplosion(this.particles, this.camX+W/2, H/2, '#3affd2', 60, 3);
+    this.shake=0.8;
+    Audio2.levelup();
+    this.toast('清屏！清除 '+killCount+' 敌人 + '+bulletCount+' 子弹');
+  }
   findNearestEnemy(x,y){
     let best=null,bd=Infinity;
     for(const e of this.enemies){ if(e.dead) continue; const d=dist2(x,y,e.x,e.y); if(d<bd){bd=d;best=e;} }
@@ -3613,6 +3628,12 @@ class Game{
     CTX.fillStyle=COLORS.crystal;
     CTX.font='bold 18px monospace';
     CTX.fillText('能量: '+this.player.crystals+'/'+CFG.maxCrystals, 14, by);
+    // 清屏晶体库存（Shift 发动）
+    by-=24;
+    CTX.fillStyle='#3affd2';
+    CTX.shadowBlur=6; CTX.shadowColor='#3affd2';
+    CTX.fillText('清屏: '+this.player.bombs+'/2 [Shift]', 14, by);
+    CTX.shadowBlur=0;
 
     // 6个升级项列表（右下竖排）
     const px=W-180, py0=H-14;
@@ -3758,7 +3779,7 @@ class Game{
       '↑↓ / W S   选择关卡',
       '回车       开始游戏',
       '',
-      '游戏中：方向键移动  空格射击  数字键1-6升级  P暂停',
+      '游戏中：方向键移动  空格射击  数字键1-6升级  Shift清屏  P暂停',
     ];
     help.forEach((l,i)=> CTX.fillText(l, W/2, H-90+i*20));
     CTX.restore();
