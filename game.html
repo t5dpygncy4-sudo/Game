@@ -48,7 +48,7 @@ const CFG = {
   fireCooldown: 0.156,        // 降低20%射速
   laserCooldown: 0.192,
   missileCooldown: 1.0,
-  missileSpeed: 420,          // 追踪导弹基础速度（提速）
+  missileSpeed: 600,          // 追踪导弹基础速度（提速：原 420）
   maxCrystals: 10,            // 能量晶体上限
   invincibleTime: 1.4,
   spawnPadding: 40,
@@ -498,15 +498,27 @@ class Bullet{
     this._drip=Math.random()*Math.PI*2;  // 腐蚀液滴落动画相位
   }
   update(dt, game){
-    if(this.missile && this.target && !this.target.dead){
-      const dx=this.target.x-this.x, dy=this.target.y-this.y;
-      const m=Math.hypot(dx,dy)||1;
-      const sp=Math.hypot(this.vx,this.vy);
-      this.vx += (dx/m*sp-this.vx)*0.08;
-      this.vy += (dy/m*sp-this.vy)*0.08;
-      this.angle=Math.atan2(this.vy,this.vx);
-    } else if(this.missile){
-      this.target=game.findNearestEnemy(this.x,this.y);
+    if(this.missile){
+      // 失去目标后立即重选最近敌人（以导弹当前位置为搜索中心）
+      if(!this.target || this.target.dead){
+        this.target = game.findNearestEnemy(this.x, this.y);
+      }
+      if(this.target){
+        const dx=this.target.x-this.x, dy=this.target.y-this.y;
+        const m=Math.hypot(dx,dy)||1;
+        const sp=Math.hypot(this.vx,this.vy);
+        // 强追踪（0.16）：让导弹更快转向目标
+        this.vx += (dx/m*sp-this.vx)*0.16;
+        this.vy += (dy/m*sp-this.vy)*0.16;
+        // 始终维持基础速度（避免追尾时减速）
+        const cur=Math.hypot(this.vx,this.vy);
+        const base=CFG.missileSpeed + (game.player? (game.player.missileLevel-1)*60 : 0);
+        if(cur < base){
+          this.vx = (cur>0? this.vx/cur:1) * base;
+          this.vy = (cur>0? this.vy/cur:0) * base;
+        }
+        this.angle=Math.atan2(this.vy,this.vx);
+      }
     }
     this.x+=this.vx*dt; this.y+=this.vy*dt;
     // 腐蚀液：受重力下沉，呈现抛物线轨迹
@@ -1069,7 +1081,9 @@ class Wingman{
   }
   update(dt){
     this.t+=dt;
-    const offsetX = -38 - this.slot*22;
+    // 4 个僚机布局：上下各两个，前两架近，后两架远（每对靠拢机尾）
+    // slot 0: 上近, 1: 下近, 2: 上远, 3: 下远
+    const offsetX = -38 - Math.floor(this.slot/2)*22;
     const offsetY = (this.slot%2===0?-1:1) * (24 + Math.floor(this.slot/2)*18);
     const tx=this.player.x+offsetX, ty=this.player.y+offsetY;
     this.x += (tx-this.x)*0.18;
@@ -1210,8 +1224,8 @@ const UPGRADES = [
   { key:'2', id:'missile',cost:2, name:'追踪弹', desc:'每秒发射2枚追踪导弹' },
   { key:'3', id:'spread', cost:3, name:'散弹',   desc:'扇形散射(3级:3/5/7路)' },
   { key:'4', id:'laser',  cost:4, name:'激光',   desc:'持续激光(3级:蓝/橙/红,与散弹互斥)' },
-  { key:'5', id:'wingman',cost:5, name:'僚机',   desc:'增加1个僚机(最多3)' },
-  { key:'6', id:'shield', cost:6, name:'护盾',   desc:'2次护盾抵挡(黄色,不可叠加)' },
+  { key:'5', id:'wingman',cost:5, name:'僚机',   desc:'增加1个僚机(最多4)' },
+  { key:'6', id:'shield', cost:6, name:'护盾',   desc:'3次护盾抵挡(黄色,可重复购买补满)' },
 ];
 
 class Player{
@@ -1223,7 +1237,7 @@ class Player{
     this.lives=5;               // 初始 5 滴血，上限 5
     this.crystals=0;           // 持有能量晶体（上限10）
     this.abilities=new Set();  // 已解锁能力
-    this.speedLevel=0;         // 加速等级 0-3
+    this.speedLevel=0;         // 加速等级 0-5
     this.missileLevel=0;       // 追踪导弹等级 0-3
     this.spreadLevel=0;        // 散弹等级 0-3（0=未解锁，1=3颗 2=5颗 3=7颗）
     this.laserLevel=0;         // 激光等级 0-3（0=未解锁，1=蓝 2=橙 3=红）
@@ -1251,13 +1265,13 @@ class Player{
     if(slot<1||slot>6) return;
     const up = UPGRADES[slot-1];
     if(this.crystals < up.cost){ this.game.toast('能量不足: '+this.crystals+'/'+up.cost+' ('+up.name+')'); return; }
-    // 加速：3级可重复升级
+    // 加速：5级可重复升级
     if(up.id==='speed'){
-      if(this.speedLevel>=3){ this.game.toast('加速已满级 3/3'); return; }
+      if(this.speedLevel>=5){ this.game.toast('加速已满级 5/5'); return; }
       this.crystals -= up.cost;
       this.speedLevel++;
       Audio2.levelup();
-      this.game.toast('加速 Lv'+this.speedLevel+'/3 (-'+up.cost+'能量)');
+      this.game.toast('加速 Lv'+this.speedLevel+'/5 (-'+up.cost+'能量)');
       spawnExplosion(this.game.particles,this.x,this.y,COLORS.player,20,1.2);
       return;
     }
@@ -1307,14 +1321,15 @@ class Player{
     Audio2.levelup();
     this.abilities.add(up.id);
     if(up.id==='wingman'){
-      if(this.wingmen.length>=3){ this.game.toast('僚机已满 3/3'); this.crystals+=up.cost; return; }
+      if(this.wingmen.length>=4){ this.game.toast('僚机已满 4/4'); this.crystals+=up.cost; return; }
       this.wingmen.push(new Wingman(this,this.wingmen.length));
     }
     if(up.id==='shield'){
-      if(this.shieldHits>0){ this.game.toast('护盾未消失，不可叠加'); this.crystals+=up.cost; return; }
-      this.shieldHits=2;
-      this.game.toast('护盾激活 2/2 (黄色,不可叠加)');
-      spawnExplosion(this.game.particles,this.x,this.y,'#ffd24d',20,1.2);
+      // 护盾：3 次抵挡，护盾存在时也可重复购买补满
+      this.shieldHits=3;
+      this.game.toast('护盾补满 3/3 (黄色)');
+      this.shieldFlash=0.5;
+      spawnExplosion(this.game.particles,this.x,this.y,'#ffd24d',24,1.4);
       return;
     }
     this.game.toast('解锁: '+up.name+' (-'+up.cost+'能量)');
@@ -1503,7 +1518,7 @@ class Player{
       Audio2.hit();
       spawnExplosion(this.game.particles,this.x,this.y,COLORS.player,10,0.8);
       if(this.shieldHits===0){ this.abilities.delete('shield'); this.game.toast('护盾耗尽'); }
-      else { this.game.toast('护盾抵挡 剩余 '+this.shieldHits+'/2'); }
+      else { this.game.toast('护盾抵挡 剩余 '+this.shieldHits+'/3'); }
       return true;
     }
     this.lives -= dmg;          // 支持 Boss 激光子弹等多次伤害（dmg=2 一次扣 2 滴血）
@@ -3145,7 +3160,7 @@ class Game{
   spawnLifeDrop(x,y){ this.lifeDrops.push(new LifeDrop(x,y)); }
   findNearestEnemy(x,y){
     let best=null,bd=Infinity;
-    for(const e of this.enemies){ const d=dist2(x,y,e.x,e.y); if(d<bd){bd=d;best=e;} }
+    for(const e of this.enemies){ if(e.dead) continue; const d=dist2(x,y,e.x,e.y); if(d<bd){bd=d;best=e;} }
     if(this.boss && !this.boss.dead){ const d=dist2(x,y,this.boss.x,this.boss.y); if(d<bd){best=this.boss;} }
     return best;
   }
@@ -3446,10 +3461,10 @@ class Game{
       const py=py0 - (5-i)*20;
       // 多级升级：speed/missile 使用等级判定；其它用 abilities
       let owned=false, levelText='';
-      if(up.id==='speed'){ owned=this.player.speedLevel>0; levelText=' '+this.player.speedLevel+'/3'; }
+      if(up.id==='speed'){ owned=this.player.speedLevel>0; levelText=' '+this.player.speedLevel+'/5'; }
       else if(up.id==='missile'){ owned=this.player.missileLevel>0; levelText=' '+this.player.missileLevel+'/3'; }
       else { owned=this.player.abilities.has(up.id); }
-      const maxed = (up.id==='speed'&&this.player.speedLevel>=3) || (up.id==='missile'&&this.player.missileLevel>=3);
+      const maxed = (up.id==='speed'&&this.player.speedLevel>=5) || (up.id==='missile'&&this.player.missileLevel>=3);
       const enough = this.player.crystals >= up.cost;
       // 背景
       CTX.fillStyle = maxed ? 'rgba(94,255,154,0.25)' : (owned ? 'rgba(94,247,255,0.15)' : (enough ? 'rgba(255,210,77,0.1)' : 'rgba(40,40,40,0.3)'));
@@ -3460,8 +3475,8 @@ class Game{
       // 名称
       CTX.fillStyle = maxed ? '#5dff9a' : (owned ? '#5dff9a' : '#cfe');
       let label = up.name + levelText;
-      if(up.id==='wingman') label += ' '+this.player.wingmen.length+'/3';
-      if(up.id==='shield') label += ' '+this.player.shieldHits+'/2';
+      if(up.id==='wingman') label += ' '+this.player.wingmen.length+'/4';
+      if(up.id==='shield') label += ' '+this.player.shieldHits+'/3';
       CTX.fillText(label, px+24, py);
       // 消耗
       CTX.fillStyle = maxed ? '#5dff9a' : (owned ? '#5dff9a' : (enough ? COLORS.crystal : '#933'));

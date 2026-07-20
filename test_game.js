@@ -117,7 +117,7 @@ const exportLine = `
 globalThis.__exports = {
   Game, LEVELS, CFG, COLORS, Input, Audio2,
   Player, Wingman, Bullet, Enemy, Boss,
-  Obstacle, ObstacleSpawner, Starfield, WAVE_TEMPLATES,
+  Obstacle, ObstacleSpawner, Starfield, WAVE_TEMPLATES, UPGRADES,
 };
 `;
 vm.runInContext(exportLine, sandbox);
@@ -459,6 +459,80 @@ test('Boss 死亡后等待 3 秒拾取掉落物', ()=>{
   // 推进到 3 秒以上，应切换到 LEVEL_OUT
   for(let i=0;i<110;i++) g.update(0.01);
   if(g.state !== 'LEVEL_OUT') throw new Error(`3 秒后应切换到 LEVEL_OUT, 实际 ${g.state}`);
+});
+
+// T22: 飞机速度升级上限改为 5 级
+test('飞机速度升级上限为 5 级', ()=>{
+  if(sandbox.UPGRADES[0].id !== 'speed') throw new Error('UPGRADES[0] 应为 speed');
+  const g = makeGame(0);
+  g.player.crystals = 100;
+  // 升 5 次
+  for(let i=0;i<5;i++) g.player.tryUpgrade(1);
+  if(g.player.speedLevel !== 5) throw new Error('5 次加速后 speedLevel 应为 5, 实际 '+g.player.speedLevel);
+  // 第 6 次应失败
+  const before = g.player.speedLevel;
+  g.player.tryUpgrade(1);
+  if(g.player.speedLevel !== 5) throw new Error('满级后不应继续升级');
+});
+
+// T23: 僚机上限改为 4 级，且位置布局上下对称
+test('僚机上限为 4 级且布局上下对称', ()=>{
+  const g = makeGame(0);
+  g.player.crystals = 100;
+  for(let i=0;i<4;i++) g.player.tryUpgrade(5);
+  if(g.player.wingmen.length !== 4) throw new Error('4 次购买后应有 4 个僚机, 实际 '+g.player.wingmen.length);
+  // 第 5 次应失败
+  g.player.tryUpgrade(5);
+  if(g.player.wingmen.length !== 4) throw new Error('满级后不应继续增加僚机');
+  // 推进一帧让僚机定位
+  for(let i=0;i<30;i++) g.player.wingmen.forEach(w=>w.update(0.05));
+  const offsets = g.player.wingmen.map(w => w.y - g.player.y);
+  // 应有 2 个负偏移（上）和 2 个正偏移（下）
+  const upCount = offsets.filter(o => o < -5).length;
+  const dnCount = offsets.filter(o => o > 5).length;
+  if(upCount !== 2 || dnCount !== 2) throw new Error(`僚机布局应上下各 2 个, 实际 上${upCount} 下${dnCount}, 偏移=${offsets}`);
+});
+
+// T24: 护盾 3 次抵挡 + 存在时按 6 可补满
+test('护盾 3 次抵挡 + 可补满', ()=>{
+  const g = makeGame(0);
+  g.player.crystals = 100;
+  // 第一次购买护盾
+  g.player.tryUpgrade(6);
+  if(g.player.shieldHits !== 3) throw new Error('护盾激活后应为 3 次, 实际 '+g.player.shieldHits);
+  // 抵挡 1 次后剩 2
+  g.player.hurt(1);
+  if(g.player.shieldHits !== 2) throw new Error('抵挡 1 次后应剩 2, 实际 '+g.player.shieldHits);
+  // 再按 6 补满
+  g.player.tryUpgrade(6);
+  if(g.player.shieldHits !== 3) throw new Error('补满后应回 3 次, 实际 '+g.player.shieldHits);
+});
+
+// T25: 追踪导弹基础速度 600（原 420）+ 失去目标后立即重选
+test('追踪导弹速度提升 + 失去目标重选', ()=>{
+  if(sandbox.CFG.missileSpeed !== 600) throw new Error('missileSpeed 应为 600, 实际 '+sandbox.CFG.missileSpeed);
+  const g = makeGame(2);   // 第三关有敌人
+  // 创建一个敌人作为初始目标
+  const e1 = new sandbox.Enemy('fighter', g.camX + 300, 100, g);
+  e1.dead = false; g.enemies.push(e1);
+  // 发射导弹
+  g.player.missileLevel = 1;
+  g.player.crystals = 100;
+  g.player.tryUpgrade(2);  // 解锁追踪弹
+  g.player.fireMissiles();
+  const missile = g.bullets.find(b => b.missile);
+  if(!missile) throw new Error('应有导弹生成');
+  if(!missile.target) throw new Error('导弹初始应有目标');
+  // 让原目标死亡
+  const oldTarget = missile.target;
+  oldTarget.dead = true;
+  // 创建新敌人
+  const e2 = new sandbox.Enemy('fighter', g.camX + 500, 300, g);
+  e2.dead = false; g.enemies.push(e2);
+  // 更新一帧：导弹应立即重选新目标
+  missile.update(0.05, g);
+  if(!missile.target || missile.target === oldTarget) throw new Error('导弹应立即重选最近敌人');
+  if(missile.target !== e2) throw new Error('导弹新目标应为新敌人 e2');
 });
 
 // T16b: 第六关后半段纯障碍——障碍物成丛生成（每丛 2-3 个）
