@@ -446,7 +446,7 @@ test('第六关后半段障碍物密度降低', ()=>{
 });
 
 // T21: Boss 死亡后进入 LEVEL_CLEAR 状态，3 秒后才进入 LEVEL_OUT
-test('Boss 死亡后等待 3 秒拾取掉落物', ()=>{
+test('Boss 死亡后等待 4.5 秒拾取掉落物', ()=>{
   const W = sandbox.W, H = sandbox.H;
   const g = makeGame(0);   // 第一关，无 levelIndex 越界
   // 触发 boss
@@ -460,12 +460,12 @@ test('Boss 死亡后等待 3 秒拾取掉落物', ()=>{
   // 更新一帧，game.update 检测到 boss.dead 后应进入 LEVEL_CLEAR
   g.update(0.01);
   if(g.state !== 'LEVEL_CLEAR') throw new Error(`Boss 死亡后应进入 LEVEL_CLEAR, 实际 ${g.state}`);
-  // 推进 2 秒，仍应为 LEVEL_CLEAR
-  for(let i=0;i<200;i++) g.update(0.01);
-  if(g.state !== 'LEVEL_CLEAR') throw new Error(`2 秒后应仍为 LEVEL_CLEAR, 实际 ${g.state}`);
-  // 推进到 3 秒以上，应切换到 LEVEL_OUT
-  for(let i=0;i<110;i++) g.update(0.01);
-  if(g.state !== 'LEVEL_OUT') throw new Error(`3 秒后应切换到 LEVEL_OUT, 实际 ${g.state}`);
+  // 推进 3 秒，仍应为 LEVEL_CLEAR
+  for(let i=0;i<300;i++) g.update(0.01);
+  if(g.state !== 'LEVEL_CLEAR') throw new Error(`3 秒后应仍为 LEVEL_CLEAR, 实际 ${g.state}`);
+  // 推进到 4.5 秒以上，应切换到 LEVEL_OUT
+  for(let i=0;i<160;i++) g.update(0.01);
+  if(g.state !== 'LEVEL_OUT') throw new Error(`4.5 秒后应切换到 LEVEL_OUT, 实际 ${g.state}`);
 });
 
 // T22: 飞机速度升级上限改为 5 级

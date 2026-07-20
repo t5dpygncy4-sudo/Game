@@ -3560,7 +3560,7 @@ class Game{
       this.transitionTimer+=dt;
       // 玩家仍可控（移动/开火），但关卡滚动停止
       // 拾取物仍能被吸取（player.update 会处理）
-      if(this.transitionTimer >= 3.0){
+      if(this.transitionTimer >= 4.5){
         this.state='LEVEL_OUT';
         this.transitionTimer=0;
       }
