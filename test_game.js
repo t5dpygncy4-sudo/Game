@@ -1331,6 +1331,95 @@ test('drawSpecials 各 Boss 状态下绘制不抛异常', ()=>{
   catch(e){ throw new Error('Boss6 drawSpecials 异常: '+e.message); }
 });
 
+// T44: 新增 fireTracking / fireWall 方法存在
+test('Boss 新增 fireTracking / fireWall 方法存在', ()=>{
+  const g = makeGame(0);
+  const b = new sandbox.Boss(g, 1);
+  if(typeof b.fireTracking !== 'function') throw new Error('Boss 缺少 fireTracking 方法');
+  if(typeof b.fireWall !== 'function') throw new Error('Boss 缺少 fireWall 方法');
+});
+
+// T45: fireTracking 发射追踪子弹
+test('fireTracking 发射追踪子弹', ()=>{
+  const g = makeGame(0);
+  const b = new sandbox.Boss(g, 1);
+  g.player.x = b.x - 200;
+  g.player.y = b.y;
+  const before = g.bullets.length;
+  b.fireTracking(3, 1.5);
+  if(g.bullets.length - before !== 3) throw new Error('fireTracking(3) 应发射 3 颗, 实际 '+(g.bullets.length-before));
+  // 验证子弹带追踪属性
+  const tbs = g.bullets.slice(before);
+  for(const bul of tbs){
+    if(bul.tracking !== 0.4) throw new Error('追踪子弹 tracking 应为 0.4, 实际 '+bul.tracking);
+    if(bul.trackingTime !== 1.5) throw new Error('追踪子弹 trackingTime 应为 1.5, 实际 '+bul.trackingTime);
+  }
+});
+
+// T46: 追踪子弹在 update 中朝玩家转向
+test('追踪子弹在 update 中朝玩家转向', ()=>{
+  const g = makeGame(0);
+  // 玩家在屏幕左侧，子弹从右侧发射
+  g.player.x = 100;
+  g.player.y = 300;
+  const bullet = new sandbox.Bullet(800, 300, -100, 0, {w:10,h:10,dmg:1,color:'#ff8a3a',friendly:false,tracking:0.4,trackingTime:1.5});
+  const vy0 = bullet.vy;
+  // 把玩家位置移到上方，子弹应朝上方转向
+  g.player.y = 100;
+  bullet.update(0.1, g);
+  // vy 应朝负方向（向上）变化
+  if(bullet.vy >= vy0) throw new Error('追踪子弹应朝玩家方向（上）转向, vy='+bullet.vy+' vs '+vy0);
+  // trackingTime 应减少
+  if(bullet.trackingTime >= 1.5) throw new Error('trackingTime 应减少, 实际 '+bullet.trackingTime);
+});
+
+// T47: fireWall 发射散弹墙（朝玩家方向，避开玩家附近 gap）
+test('fireWall 发射散弹墙', ()=>{
+  const g = makeGame(0);
+  const b = new sandbox.Boss(g, 1);
+  g.player.x = 200;
+  g.player.y = sandbox.H/2;   // 屏幕中央
+  const before = g.bullets.length;
+  b.fireWall(10);
+  const newBullets = g.bullets.length - before;
+  if(newBullets < 3) throw new Error('fireWall(10) 至少应发射 3 颗（避开 gap）, 实际 '+newBullets);
+  // 验证子弹朝左飞（朝玩家方向）
+  const wallBullets = g.bullets.slice(before);
+  for(const bul of wallBullets){
+    if(bul.vx >= 0) throw new Error('散弹墙子弹应朝左飞, vx='+bul.vx);
+  }
+});
+
+// T48: 阶段切换瞬间爆发弹幕
+test('Boss 阶段切换瞬间爆发弹幕', ()=>{
+  const g = makeGame(5);
+  const b = new sandbox.Boss(g, 6);
+  b.entered = true;
+  // 初始 phase=1，hp=full
+  if(b.phase !== 1) throw new Error('初始 phase 应为 1, 实际 '+b.phase);
+  // 把 hp 降到 25% 以下，触发 phase 切换到 3
+  b.hp = b.maxHp * 0.2;
+  const before = g.bullets.length;
+  b.update(0.01);
+  if(b.phase !== 3) throw new Error('切换后 phase 应为 3, 实际 '+b.phase);
+  // 应爆发 fireRing(20) + fireFan(10) = 30 颗
+  if(g.bullets.length - before < 25) throw new Error('阶段切换应爆发至少 25 颗子弹, 实际 '+(g.bullets.length-before));
+});
+
+// T49: Boss 阶段3 移动更主动（朝玩家 Y 漂移）
+test('Boss 阶段3 移动更主动：朝玩家 Y 漂移', ()=>{
+  const g = makeGame(0);
+  const b = new sandbox.Boss(g, 1);
+  b.entered = true;
+  b.phase = 3;
+  // 玩家在 Boss 上方
+  g.player.y = 100;
+  const bossY0 = b.y;
+  b.update(0.5);
+  // Boss Y 应朝玩家方向（减小）
+  if(b.y >= bossY0) throw new Error('Boss P3 应朝玩家方向（上）漂移, y0='+bossY0+' y1='+b.y);
+});
+
 // 跑测试
 let passed = 0, failed = 0;
 for(const t of tests){

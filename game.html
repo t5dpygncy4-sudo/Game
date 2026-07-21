@@ -607,6 +607,8 @@ class Bullet{
     this.missile=opts.missile||false;
     this.corrosive=opts.corrosive||false;   // 腐蚀液：受重力下沉
     this.bossLaser=opts.bossLaser||false;   // Boss 激光子弹：命中扣 2 滴血
+    this.tracking=opts.tracking||0;        // 追踪强度：>0 时朝玩家追踪
+    this.trackingTime=opts.trackingTime||0; // 追踪持续时间
     this.target=opts.target||null;
     this.hits=new Set();
     this.dead=false;
@@ -641,6 +643,16 @@ class Bullet{
     this.x+=this.vx*dt; this.y+=this.vy*dt;
     // 腐蚀液：受重力下沉，呈现抛物线轨迹
     if(this.corrosive){ this.vy += 180*dt; }
+    // 追踪型子弹：朝玩家方向轻微转向（持续时间衰减）
+    if(this.tracking>0 && this.trackingTime>0 && game.player && game.player.alive){
+      this.trackingTime-=dt;
+      const p=game.player;
+      const dx=p.x-this.x, dy=p.y-this.y;
+      const m=Math.hypot(dx,dy)||1;
+      const sp=Math.hypot(this.vx,this.vy);
+      this.vx += (dx/m*sp-this.vx)*this.tracking*dt*5;
+      this.vy += (dy/m*sp-this.vy)*this.tracking*dt*5;
+    }
     this._drip += dt*8;
     this.life-=dt;
     if(this.life<=0) this.dead=true;
@@ -2931,50 +2943,74 @@ class Boss{
     if(!this.alarmPlayed){ Audio2.bossWarn(); this.alarmPlayed=true; }
     // boss3 在冲撞机制非 idle 状态时跳过默认上下浮动（由冲撞状态机控制位置）
     if(!(this.type===3 && this.chargeState!=='idle')){
-      this.y+=this.dirY*55*dt;
+      // 阶段 3：Boss 移动更主动——上下浮动速度更快 + 朝玩家 Y 方向移动
+      const moveSpeed = this.phase===3 ? 90 : (this.phase===2 ? 70 : 55);
+      this.y+=this.dirY*moveSpeed*dt;
+      // 阶段 3 额外朝玩家 Y 方向漂移（逼玩家持续移动）
+      if(this.phase===3){
+        const p=this.game.player;
+        const dy = p.y - this.y;
+        // 漂移强度：与距离成正比，最大 200 px/s（远大于浮动 90 px/s）
+        this.y += Math.sign(dy) * Math.min(Math.abs(dy), 200) * dt * 1.5;
+      }
       if(this.y<130) this.dirY=1;
       if(this.y>H-130) this.dirY=-1;
     }
     const ratio=this.hp/this.maxHp;
     const newPhase = ratio>0.5?1:(ratio>0.25?2:3);
-    if(newPhase!==this.phase){ this.phase=newPhase; this.game.toast('BOSS 阶段 '+this.phase); }
+    if(newPhase!==this.phase){
+      this.phase=newPhase;
+      this.game.toast('BOSS 阶段 '+this.phase+'！');
+      Audio2.bossWarn();
+      // 阶段切换瞬间爆发：环形 + 扇形 + 闪光
+      this.fireRing(20, 130);
+      this.fireFan(10, 0.5);
+      this.game.shake = 0.6;
+      this.game.flash = 0.3;
+    }
     this.fireTimer-=dt*this.game.fireScale();
     if(this.fireTimer<=0){
       if(this.type===1){
-        if(this.phase===1){ this.fireTimer=1.4; this.fireFan(4,0.3); }
-        else if(this.phase===2){ this.fireTimer=1.0; this.fireFan(6,0.35); if(Math.random()<0.5) this.summonAsteroid(); }
-        else { this.fireTimer=0.7; this.fireFan(7,0.4); this.fireBarrage(4,0.12); if(Math.random()<0.6) this.summonAsteroid(); }
+        if(this.phase===1){ this.fireTimer=0.9; this.fireFan(5,0.32); if(Math.random()<0.4) this.fireAimed(2,0.1); }
+        else if(this.phase===2){ this.fireTimer=0.65; this.fireFan(7,0.38); this.fireBarrage(3,0.14); if(Math.random()<0.6) this.summonAsteroid(); if(Math.random()<0.35) this.fireTracking(2,1.2); }
+        else { this.fireTimer=0.45; this.fireFan(8,0.42); this.fireBarrage(5,0.12); this.fireAimed(3,0.08); if(Math.random()<0.7) this.summonAsteroid(); if(Math.random()<0.5) this.fireTracking(3,1.5); }
       } else if(this.type===2){   // boss2 弹幕：扇形 + 双臂螺旋 + 密集弹流
-        if(this.phase===1){ this.fireTimer=0.65; this.fireAimed(3,0.12); }
-        else if(this.phase===2){ this.fireTimer=0.5; this.fireSpiralMulti(2,5); this.fireAimed(2,0.1); }
-        else { this.fireTimer=0.4; this.fireSpiralMulti(2,7); this.fireBarrage(5,0.1); if(Math.random()<0.4) this.fireFan(6,0.35); }
+        if(this.phase===1){ this.fireTimer=0.45; this.fireAimed(3,0.12); if(Math.random()<0.5) this.fireFan(4,0.25); }
+        else if(this.phase===2){ this.fireTimer=0.32; this.fireSpiralMulti(2,5); this.fireAimed(3,0.1); if(Math.random()<0.5) this.fireBarrage(3,0.1); if(Math.random()<0.4) this.fireTracking(2,1.3); }
+        else { this.fireTimer=0.22; this.fireSpiralMulti(3,7); this.fireBarrage(5,0.1); if(Math.random()<0.6) this.fireFan(8,0.4); if(Math.random()<0.5) this.fireTracking(3,1.6); if(Math.random()<0.25) this.fireWall(8); }
       } else if(this.type===3){   // boss3 弹幕：螺旋 + 放射圈交织
-        if(this.phase===1){ this.fireTimer=0.5; this.fireSpiral(10); }
-        else if(this.phase===2){ this.fireTimer=0.4; this.fireSpiral(12); this.fireBurst(10,150); }
-        else { this.fireTimer=0.3; this.fireSpiralMulti(3,5); this.fireBurst(14,170); if(Math.random()<0.5) this.fireBarrage(4,0.1); }
+        if(this.phase===1){ this.fireTimer=0.32; this.fireSpiral(10); if(Math.random()<0.4) this.fireAimed(2,0.08); }
+        else if(this.phase===2){ this.fireTimer=0.24; this.fireSpiral(14); this.fireBurst(12,160); if(Math.random()<0.4) this.fireAimed(2,0.1); if(Math.random()<0.35) this.fireTracking(2,1.4); }
+        else { this.fireTimer=0.18; this.fireSpiralMulti(3,6); this.fireBurst(16,180); this.fireBarrage(4,0.1); if(Math.random()<0.5) this.fireFan(6,0.3); if(Math.random()<0.5) this.fireTracking(3,1.6); }
       } else if(this.type===4){   // boss4 火龙：火球 + 弹幕交织
-        if(this.phase===1){ this.fireTimer=1.1; this.fireFan(6,0.32); this.summonFireBall(); }
-        else if(this.phase===2){ this.fireTimer=0.85; this.fireFan(8,0.35); this.fireBarrage(3,0.12); this.summonFireBall(); }
-        else { this.fireTimer=0.55; this.fireSpiral(10); this.fireFan(7,0.4); this.summonFireBall(); if(Math.random()<0.4) this.fireBurst(12,160); }
+        if(this.phase===1){ this.fireTimer=0.7; this.fireFan(7,0.34); this.summonFireBall(); if(Math.random()<0.4) this.fireAimed(2,0.1); }
+        else if(this.phase===2){ this.fireTimer=0.5; this.fireFan(9,0.38); this.fireBarrage(4,0.13); this.summonFireBall(); if(Math.random()<0.4) this.fireTracking(2,1.5); }
+        else { this.fireTimer=0.32; this.fireSpiral(12); this.fireFan(9,0.42); this.summonFireBall(); if(Math.random()<0.5) this.fireBurst(14,170); if(Math.random()<0.5) this.fireTracking(3,1.8); if(Math.random()<0.3) this.fireWall(10); }
       } else if(this.type===5){   // boss5 骷髅王：能量圈 + 双臂螺旋 + 腐蚀液
-        if(this.phase===1){ this.fireTimer=1.2; this.fireRing(18,130); }
-        else if(this.phase===2){ this.fireTimer=0.95; this.fireRing(22,130); this.fireSpiralMulti(2,4); if(Math.random()<0.5) this.summonMutant(); }
-        else { this.fireTimer=0.7; this.fireRing(26,140); this.fireSpiralMulti(3,5); this.summonMutant(); if(Math.random()<0.5) this.fireCorrosiveFan(); }
+        if(this.phase===1){ this.fireTimer=0.7; this.fireRing(20,140); if(Math.random()<0.4) this.fireAimed(2,0.1); }
+        else if(this.phase===2){ this.fireTimer=0.5; this.fireRing(24,140); this.fireSpiralMulti(2,5); if(Math.random()<0.6) this.summonMutant(); if(Math.random()<0.35) this.fireTracking(2,1.5); }
+        else { this.fireTimer=0.35; this.fireRing(28,150); this.fireSpiralMulti(3,6); this.summonMutant(); if(Math.random()<0.6) this.fireCorrosiveFan(); this.fireBarrage(3,0.12); if(Math.random()<0.5) this.fireTracking(3,1.8); }
       } else if(this.type===6){   // boss6 巨型机器人：逆天弹幕 + 连续激光
-        if(this.phase===1){ this.fireTimer=0.8; this.fireSpiralMulti(3,6); this.fireBurst(12,150); }
-        else if(this.phase===2){ this.fireTimer=0.55; this.fireSpiralMulti(4,5); this.fireBurst(16,160); this.fireBarrage(4,0.1); }
-        else { this.fireTimer=0.35; this.fireSpiralMulti(4,7); this.fireBurst(20,170); this.fireBarrage(6,0.08); if(Math.random()<0.4) this.fireRing(14,140); }
+        if(this.phase===1){ this.fireTimer=0.5; this.fireSpiralMulti(3,7); this.fireBurst(14,160); if(Math.random()<0.4) this.fireAimed(2,0.1); }
+        else if(this.phase===2){ this.fireTimer=0.32; this.fireSpiralMulti(4,6); this.fireBurst(18,170); this.fireBarrage(4,0.1); if(Math.random()<0.35) this.fireTracking(2,1.6); if(Math.random()<0.25) this.fireWall(8); }
+        else { this.fireTimer=0.2; this.fireSpiralMulti(5,8); this.fireBurst(24,180); this.fireBarrage(6,0.08); if(Math.random()<0.5) this.fireRing(16,150); if(Math.random()<0.6) this.fireTracking(4,2.0); if(Math.random()<0.35) this.fireWall(10); }
       }
     }
     // Boss 激光子弹：周期性朝玩家发射，命中扣 2 滴血（2-6 关 Boss 才发射，频率更高）
     if(this.type>=2){
       this.laserBulletTimer-=dt;
       if(this.laserBulletTimer<=0){
-        this.laserBulletTimer = this.type===6?2.0:(this.type===5?2.5:(this.type===4?3.0:3.5));
+        // 阶段越高冷却越短
+        const baseT = this.type===6?1.6:(this.type===5?2.0:(this.type===4?2.4:3.0));
+        this.laserBulletTimer = this.phase===3?baseT*0.7:(this.phase===2?baseT:baseT*1.3);
         this.fireLaserBullet();
-        // 阶段 3 时连发 2 颗（双管齐下）
+        // 阶段 2 偏移发射第二颗
+        if(this.phase>=2){
+          this.fireLaserBullet(true);
+        }
+        // 阶段 3 再加一颗反向偏移（三管齐下）
         if(this.phase===3){
-          this.fireLaserBullet(true);   // 偏移发射第二颗
+          this.fireLaserBullet(true, -0.18);
         }
       }
     }
@@ -3013,15 +3049,15 @@ class Boss{
       // boss2: 周期性召唤障碍物（小行星 + 碎片，玩家需躲避）
       this.obstacleTimer-=dt;
       if(this.obstacleTimer<=0){
-        this.obstacleTimer = this.phase===3?3.5:(this.phase===2?4.5:6.0);
-        // 召唤 2-3 个障碍物敌人（不带开火的小行星 + 偶尔大碎片）
-        const n = this.phase===3?3:2;
+        this.obstacleTimer = this.phase===3?2.5:(this.phase===2?3.5:4.5);
+        // 召唤 2-4 个障碍物敌人（不带开火的小行星 + 偶尔大碎片）
+        const n = this.phase===3?4:(this.phase===2?3:2);
         for(let i=0;i<n;i++){
           const t = Math.random()<0.3?'asteroid_m':'asteroid_s';
           this.game.enemies.push(new Enemy(t, this.x-rand(40,100), this.y+rand(-80,80), this.game));
         }
-        if(this.phase>=2 && Math.random()<0.5){
-          // 阶段 2 起偶尔加入大碎片（爆炸后散弹）
+        if(this.phase>=2 && Math.random()<0.6){
+          // 阶段 2 起更频繁加入大碎片（爆炸后散弹）
           this.game.enemies.push(new Enemy('debris_big', this.x-rand(30,80), this.y+rand(-60,60), this.game));
         }
         this.game.toast('注意躲避障碍！');
@@ -3084,7 +3120,7 @@ class Boss{
         this.y = this.chargeOriginY + (this.chargeTargetY-this.chargeOriginY)*easeT;
         if(this.chargeDur<=0){
           this.chargeState='idle';
-          this.chargeTimer = this.phase===3?3.5:(this.phase===2?4.5:6.0);
+          this.chargeTimer = this.phase===3?2.2:(this.phase===2?3.2:4.5);
         }
       }
       // 充能/冲刺期间覆盖默认上下移动（已通过直接修改 x/y）
@@ -3097,7 +3133,7 @@ class Boss{
       // boss4: 目标定向多发扫射弹幕（追踪玩家位置，连续发射多发）
       this.sweepTimer-=dt;
       if(this.sweepTimer<=0){
-        this.sweepTimer = this.phase===3?2.5:(this.phase===2?3.5:5.0);
+        this.sweepTimer = this.phase===3?1.8:(this.phase===2?2.6:4.0);
         // 朝玩家方向连续发射 6 发扇形扫射弹幕
         const p=this.game.player;
         const base=Math.atan2(p.y-this.y, p.x-this.x);
@@ -3158,7 +3194,7 @@ class Boss{
         }
         if(this.rotLaserDur<=0){
           this.rotLaserActive=false;
-          this.rotLaserTimer=4.0;   // 4 秒冷却
+          this.rotLaserTimer=2.5;   // 2.5 秒冷却（缩短，让 P3 始终高压）
         }
       }
     }
@@ -3200,7 +3236,7 @@ class Boss{
         }
         if(this.energyWaveDur<=0){
           this.energyWaveActive=false;
-          this.energyWaveTimer = this.phase===3?5.0:8.0;
+          this.energyWaveTimer = this.phase===3?3.5:6.0;
         }
       }
 
@@ -3245,7 +3281,7 @@ class Boss{
           this.ricochetLaserVy *= 0.95;
           if(this.ricochetLaserBounces>=this.ricochetLaserMaxBounces){
             this.ricochetLaserActive=false;
-            this.ricochetLaserTimer = this.phase===3?3.5:5.0;
+            this.ricochetLaserTimer = this.phase===3?2.5:3.5;
           }
         }
         // 碰撞玩家
@@ -3258,7 +3294,7 @@ class Boss{
         // 寿命到也消失
         if(this.ricochetLaserLife<=0){
           this.ricochetLaserActive=false;
-          this.ricochetLaserTimer = this.phase===3?3.5:5.0;
+          this.ricochetLaserTimer = this.phase===3?2.5:3.5;
         }
       }
     }
@@ -3288,19 +3324,46 @@ class Boss{
     ctx.restore();
   }
   // Boss 激光子弹：朝玩家方向发射梯形激光，命中扣 2 滴血
-  fireLaserBullet(offset=false){
+  fireLaserBullet(offset=false, offAngle=0.18){
     const p=this.game.player;
     const sp=CFG.enemyBulletSpeed*1.4;     // 激光子弹更快
     const dx=p.x-this.x, dy=p.y-this.y;
     const m=Math.hypot(dx,dy)||1;
-    // 第二颗偏移发射：与玩家方向偏 0.18 弧度，避开重合
-    const ang = offset ? Math.atan2(dy,dx)+0.18 : Math.atan2(dy,dx);
+    // 偏移发射：与玩家方向偏 offAngle 弧度
+    const ang = offset ? Math.atan2(dy,dx)+offAngle : Math.atan2(dy,dx);
     const vx=Math.cos(ang)*sp, vy=Math.sin(ang)*sp;
     this.game.bullets.push(new Bullet(this.x-30,this.y,vx,vy,
       {w:14,h:14,dmg:2,color:'#ff3a3a',friendly:false,laser:true,bossLaser:true}));
   }
   summonAsteroid(){
     this.game.enemies.push(new Enemy('asteroid_s', this.x-rand(20,80), this.y+rand(-60,60), this.game));
+  }
+  // 追踪子弹：朝玩家方向发射，持续追踪一段时间
+  fireTracking(count, trackTime=1.5){
+    const p=this.game.player;
+    const sp=CFG.enemyBulletSpeed*0.9;
+    const base=Math.atan2(p.y-this.y, p.x-this.x);
+    for(let i=0;i<count;i++){
+      const a=base+(i-(count-1)/2)*0.2;
+      this.game.bullets.push(new Bullet(this.x-30,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:10,h:10,dmg:1,color:'#ff8a3a',friendly:false,tracking:0.4,trackingTime:trackTime}));
+    }
+  }
+  // 散弹墙：在玩家前方 Y 位置形成横向子弹墙（玩家必须垂直闪避）
+  fireWall(rows){
+    const p=this.game.player;
+    const sp=CFG.enemyBulletSpeed*1.0;
+    // 在玩家 x - 250 处生成纵向 wall（玩家需要上下移动避开）
+    const wallX = p.x + 200;
+    const gap = 80;   // 留一个 gap 让玩家有空间穿过
+    const gapY = p.y;
+    for(let r=0;r<rows;r++){
+      const y = (H/rows)*r + 30;
+      // 避开 gap 区域
+      if(Math.abs(y-gapY) < gap) continue;
+      this.game.bullets.push(new Bullet(wallX,y,-sp,0,
+        {w:10,h:10,dmg:1,color:'#9a6aff',friendly:false}));
+    }
   }
   summonFireBall(){
     this.game.enemies.push(new Enemy('fire_ball', this.x-rand(20,80), this.y+rand(-60,60), this.game));
