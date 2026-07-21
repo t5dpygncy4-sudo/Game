@@ -1081,6 +1081,256 @@ test('ruin_core 多模式开火：召唤碎片 / 环形 / 弹幕', ()=>{
   if(!foundBullets) throw new Error('ruin_core 应触发环形/弹幕模式');
 });
 
+// T33: Boss 专属机制状态变量初始化
+test('Boss 专属机制状态变量初始化', ()=>{
+  const g = makeGame(0);
+  for(const t of [2,3,4,5,6]){
+    const b = new sandbox.Boss(g, t);
+    // boss2: 障碍召唤
+    if(!('obstacleTimer' in b)) throw new Error(`Boss${t} 缺少 obstacleTimer`);
+    // boss3: 冲撞状态
+    if(!('chargeState' in b)) throw new Error(`Boss${t} 缺少 chargeState`);
+    if(b.chargeState !== 'idle') throw new Error(`Boss${t} 初始 chargeState 应为 idle, 实际 ${b.chargeState}`);
+    if(!('chargeTimer' in b)) throw new Error(`Boss${t} 缺少 chargeTimer`);
+    // boss4: 扫射弹幕
+    if(!('sweepTimer' in b)) throw new Error(`Boss${t} 缺少 sweepTimer`);
+    // boss5: 旋转激光
+    if(!('rotLaserActive' in b)) throw new Error(`Boss${t} 缺少 rotLaserActive`);
+    if(!('rotLaserDir' in b)) throw new Error(`Boss${t} 缺少 rotLaserDir`);
+    // boss6: 能量波 + 弹射激光
+    if(!('energyWaveActive' in b)) throw new Error(`Boss${t} 缺少 energyWaveActive`);
+    if(!('ricochetLaserActive' in b)) throw new Error(`Boss${t} 缺少 ricochetLaserActive`);
+    if(b.ricochetLaserMaxBounces !== 4) throw new Error(`Boss${t} ricochetLaserMaxBounces 应为 4, 实际 ${b.ricochetLaserMaxBounces}`);
+  }
+});
+
+// T34: Boss2 周期性召唤障碍物
+test('Boss2 周期性召唤障碍物（小行星/碎片）', ()=>{
+  const g = makeGame(1);
+  const b = new sandbox.Boss(g, 2);
+  b.entered = true;
+  b.obstacleTimer = 0.01;  // 立即触发
+  const enemiesBefore = g.enemies.length;
+  b.update(0.02);
+  if(g.enemies.length <= enemiesBefore) throw new Error('Boss2 应召唤障碍物');
+  // 验证召唤的是小行星类敌人
+  const newEnemies = g.enemies.slice(enemiesBefore);
+  const validTypes = ['asteroid_s','asteroid_m','debris_big'];
+  for(const e of newEnemies){
+    if(!validTypes.includes(e.type)) throw new Error('Boss2 召唤了非障碍类型: '+e.type);
+  }
+});
+
+// T35: Boss3 冲撞机制状态机（idle→charging→dashing→returning→idle）
+test('Boss3 冲撞机制：idle→charging→dashing→returning→idle', ()=>{
+  const g = makeGame(2);
+  const b = new sandbox.Boss(g, 3);
+  b.entered = true;
+  if(b.chargeState !== 'idle') throw new Error('初始应为 idle');
+  // 触发充能：将 chargeTimer 设为 0
+  b.chargeTimer = 0.01;
+  b.update(0.02);
+  if(b.chargeState !== 'charging') throw new Error('chargeTimer 到 0 应切换到 charging, 实际 '+b.chargeState);
+  // 推进 0.8s 应切换到 dashing
+  const dashStartY = b.y;
+  for(let i=0;i<80;i++) b.update(0.01);
+  if(b.chargeState !== 'dashing') throw new Error('充能 0.8s 后应为 dashing, 实际 '+b.chargeState);
+  // 推进 0.5s 应切换到 returning
+  for(let i=0;i<55;i++) b.update(0.01);
+  if(b.chargeState !== 'returning') throw new Error('冲刺 0.5s 后应为 returning, 实际 '+b.chargeState);
+  // 推进 1.2s 应回到 idle
+  for(let i=0;i<125;i++) b.update(0.01);
+  if(b.chargeState !== 'idle') throw new Error('归位 1.2s 后应为 idle, 实际 '+b.chargeState);
+});
+
+// T36: Boss3 冲撞接触玩家造成伤害
+test('Boss3 冲撞接触玩家造成伤害', ()=>{
+  const g = makeGame(2);
+  const b = new sandbox.Boss(g, 3);
+  b.entered = true;
+  // 把玩家拉到 Boss 附近
+  g.player.x = b.x - 60;
+  g.player.y = b.y;
+  g.player.invincible = 0;
+  const livesBefore = g.player.lives;
+  // 直接进入 dashing 阶段（已冲刺一半时间，Boss 接近玩家位置）
+  b.chargeState='dashing';
+  b.chargeDur = 0.25;  // 剩余 0.25s，tt=0.5
+  b.chargeOriginX = b.x; b.chargeOriginY = b.y;
+  b.chargeTargetX = g.player.x; b.chargeTargetY = g.player.y;
+  b.update(0.01);
+  if(g.player.lives >= livesBefore) throw new Error(`Boss3 冲撞应造成伤害, lives=${g.player.lives} vs ${livesBefore}`);
+});
+
+// T37: Boss4 目标定向多发扫射弹幕
+test('Boss4 目标定向多发扫射弹幕（3 层扇形）', ()=>{
+  const g = makeGame(3);
+  const b = new sandbox.Boss(g, 4);
+  b.entered = true;
+  b.sweepTimer = 0.01;  // 立即触发
+  const bulletsBefore = g.bullets.length;
+  b.update(0.02);
+  const newBullets = g.bullets.length - bulletsBefore;
+  // 3 层 × (4+phase) 颗，phase=1 → 3*5=15
+  if(newBullets < 12) throw new Error('Boss4 扫射应发射至少 12 颗（3 层 × 4+颗），实际 '+newBullets);
+  // 验证子弹朝玩家方向（左方）
+  const newOnes = g.bullets.slice(bulletsBefore);
+  let leftCount=0;
+  for(const bul of newOnes){
+    if(bul.vx < 0) leftCount++;   // 玩家在左
+  }
+  if(leftCount < newBullets*0.8) throw new Error('大部分子弹应朝玩家方向（左）');
+});
+
+// T38: Boss5 阶段3 旋转激光触发
+test('Boss5 阶段3 旋转激光触发', ()=>{
+  const g = makeGame(4);
+  const b = new sandbox.Boss(g, 5);
+  b.entered = true;
+  // 设置 hp 让 phase 自动切换到 3（hp < 25% maxHp）
+  b.hp = b.maxHp * 0.2;
+  b.rotLaserActive = false;
+  b.rotLaserTimer = 0.01;  // 立即触发
+  b.update(0.02);
+  if(b.phase !== 3) throw new Error('Boss5 hp=20% 应为 phase 3, 实际 '+b.phase);
+  if(!b.rotLaserActive) throw new Error('Boss5 P3 rotLaserTimer 到 0 应激活旋转激光');
+  if(b.rotLaserDur !== 5.0) throw new Error('旋转激光持续应为 5.0s, 实际 '+b.rotLaserDur);
+  // rotLaserDir 应为 ±1
+  if(Math.abs(b.rotLaserDir) !== 1) throw new Error('rotLaserDir 应为 ±1, 实际 '+b.rotLaserDir);
+});
+
+// T39: Boss5 旋转激光对玩家造成伤害
+test('Boss5 旋转激光：玩家在激光路径上受伤', ()=>{
+  const g = makeGame(4);
+  const b = new sandbox.Boss(g, 5);
+  b.entered = true;
+  // 设置 hp 进入 phase 3
+  b.hp = b.maxHp * 0.2;
+  b.update(0.01);  // 让 phase 切换为 3
+  if(b.phase !== 3) throw new Error('phase 应为 3, 实际 '+b.phase);
+  b.rotLaserActive = true;
+  b.rotLaserDur = 5.0;
+  b.rotLaserAngle = 0;   // 激光朝右方
+  b.rotLaserDir = 1;
+  g.player.invincible = 0;
+  g.player.lives = 5;
+  const livesBefore = g.player.lives;
+  // 推进 0.5s：每帧让玩家跟随激光角度移动（始终在激光路径上）
+  for(let i=0;i<50;i++){
+    const cx = g.camX + sandbox.W/2;
+    const cy = sandbox.H/2;
+    g.player.x = cx + Math.cos(b.rotLaserAngle) * 250;
+    g.player.y = cy + Math.sin(b.rotLaserAngle) * 250;
+    b.update(0.01);
+  }
+  if(g.player.lives >= livesBefore) throw new Error(`玩家在激光路径上应受伤, lives=${g.player.lives} vs ${livesBefore}`);
+});
+
+// T40: Boss6 能量波触发 + 玩家在角落安全
+test('Boss6 能量波：玩家在角落安全，在其他位置受伤', ()=>{
+  const g = makeGame(5);
+  const b = new sandbox.Boss(g, 6);
+  b.entered = true;
+  b.energyWaveActive = true;
+  b.energyWaveDur = 2.5;
+  // 玩家在角落（左上）
+  g.player.x = g.camX + 60;
+  g.player.y = 60;
+  g.player.invincible = 0;
+  g.player.lives = 5;
+  const livesBefore = g.player.lives;
+  // 推进 0.5s 不应受伤（在安全区）
+  for(let i=0;i<50;i++) b.update(0.01);
+  if(g.player.lives < livesBefore) throw new Error('玩家在角落应安全, 但受伤了');
+  // 玩家移到中央（非安全区）
+  g.player.x = g.camX + sandbox.W/2;
+  g.player.y = sandbox.H/2;
+  g.player.invincible = 0;
+  const livesMid = g.player.lives;
+  for(let i=0;i<50;i++) b.update(0.01);
+  if(g.player.lives >= livesMid) throw new Error('玩家在中央应受伤, 但未受伤');
+});
+
+// T41: Boss6 弹射激光反弹最多 4 次
+test('Boss6 弹射激光：撞墙反弹最多 4 次', ()=>{
+  const g = makeGame(5);
+  const b = new sandbox.Boss(g, 6);
+  b.entered = true;
+  // 启动弹射激光：朝右上发射，会快速撞顶
+  b.ricochetLaserActive = true;
+  b.ricochetLaserBounces = 0;
+  b.ricochetLaserLife = 10.0;  // 寿命足够长
+  b.ricochetLaserX = b.x;
+  b.ricochetLaserY = b.y;
+  b.ricochetLaserVx = 600;
+  b.ricochetLaserVy = -600;  // 朝右上快速移动
+  b.update(0.5);  // 推进 0.5s，应至少撞墙 1 次
+  if(b.ricochetLaserBounces === 0 && b.ricochetLaserActive) {
+    // 若还未撞墙，再推进
+    b.update(0.5);
+  }
+  // 验证反弹次数不超过 4
+  if(b.ricochetLaserBounces > 4) throw new Error('反弹次数超过 4, 实际 '+b.ricochetLaserBounces);
+  // 如果反弹已达 4，激光应消失
+  if(b.ricochetLaserBounces >= 4 && !b.ricochetLaserActive) {
+    // 预期：达到 4 次反弹后消失
+  }
+});
+
+// T42: Boss6 弹射激光接触玩家造成伤害
+test('Boss6 弹射激光接触玩家造成伤害', ()=>{
+  const g = makeGame(5);
+  const b = new sandbox.Boss(g, 6);
+  b.entered = true;
+  b.ricochetLaserActive = true;
+  b.ricochetLaserLife = 5.0;
+  b.ricochetLaserBounces = 0;
+  // 激光在玩家位置
+  b.ricochetLaserX = g.player.x;
+  b.ricochetLaserY = g.player.y;
+  b.ricochetLaserVx = 0;
+  b.ricochetLaserVy = 0;  // 不移动，停留在玩家位置
+  g.player.invincible = 0;
+  g.player.lives = 5;
+  const livesBefore = g.player.lives;
+  b.update(0.01);
+  if(g.player.lives >= livesBefore) throw new Error('弹射激光接触玩家应造成伤害');
+});
+
+// T43: drawSpecials 在各种 Boss 状态下不抛异常
+test('drawSpecials 各 Boss 状态下绘制不抛异常', ()=>{
+  const ctx = canvas.getContext();
+  // Boss3 充能状态
+  let g = makeGame(2);
+  let b = new sandbox.Boss(g, 3);
+  b.entered = true;
+  b.chargeState = 'charging';
+  b.t = 1.0;
+  try { b.drawSpecials(ctx, 0); }
+  catch(e){ throw new Error('Boss3 drawSpecials 异常: '+e.message); }
+  // Boss5 旋转激光激活
+  g = makeGame(4);
+  b = new sandbox.Boss(g, 5);
+  b.entered = true;
+  b.rotLaserActive = true;
+  b.rotLaserAngle = 0.5;
+  b.t = 1.0;
+  try { b.drawSpecials(ctx, 0); }
+  catch(e){ throw new Error('Boss5 drawSpecials 异常: '+e.message); }
+  // Boss6 能量波 + 弹射激光同时激活
+  g = makeGame(5);
+  b = new sandbox.Boss(g, 6);
+  b.entered = true;
+  b.energyWaveActive = true;
+  b.ricochetLaserActive = true;
+  b.ricochetLaserX = 200;
+  b.ricochetLaserY = 200;
+  b.ricochetLaserBounces = 2;
+  b.t = 1.0;
+  try { b.drawSpecials(ctx, 0); }
+  catch(e){ throw new Error('Boss6 drawSpecials 异常: '+e.message); }
+});
+
 // 跑测试
 let passed = 0, failed = 0;
 for(const t of tests){

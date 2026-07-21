@@ -2880,6 +2880,34 @@ class Boss{
     this.continuousLaserActive=false;
     this.continuousLaserDur=0;   // 当前激光持续时长
     this.continuousLaserY=H/2;   // 连续激光的Y位置
+    // ===== Boss 专属机制状态 =====
+    // boss2: 周期性召唤障碍物（小行星/碎片，玩家需躲避）
+    this.obstacleTimer=4.0;
+    // boss3: 定时加速冲撞玩家后归位
+    this.chargeState='idle';   // idle / charging / dashing / returning
+    this.chargeTimer=3.0;
+    this.chargeDur=0;
+    this.chargeTargetX=0; this.chargeTargetY=0;
+    this.chargeOriginX=0; this.chargeOriginY=0;
+    // boss4: 目标定向多发扫射弹幕（追踪玩家当前位置）
+    this.sweepTimer=3.5;
+    // boss5: 阶段3 旋转激光（顺时针/逆时针）
+    this.rotLaserActive=false;
+    this.rotLaserTimer=0;
+    this.rotLaserAngle=0;
+    this.rotLaserDir=1;
+    this.rotLaserDur=0;
+    // boss6: 大范围能量波（玩家躲角落）+ 弹射激光
+    this.energyWaveTimer=5.0;
+    this.energyWaveActive=false;
+    this.energyWaveDur=0;
+    this.ricochetLaserActive=false;
+    this.ricochetLaserTimer=4.0;
+    this.ricochetLaserX=0; this.ricochetLaserY=0;
+    this.ricochetLaserVx=0; this.ricochetLaserVy=0;
+    this.ricochetLaserBounces=0;
+    this.ricochetLaserMaxBounces=4;
+    this.ricochetLaserLife=0;
     this.w=220; this.h=140;
     if(type===1){ this.w=200; this.h=160; }
     else if(type===2){ this.w=220; this.h=140; }
@@ -2901,9 +2929,12 @@ class Boss{
       return;
     }
     if(!this.alarmPlayed){ Audio2.bossWarn(); this.alarmPlayed=true; }
-    this.y+=this.dirY*55*dt;
-    if(this.y<130) this.dirY=1;
-    if(this.y>H-130) this.dirY=-1;
+    // boss3 在冲撞机制非 idle 状态时跳过默认上下浮动（由冲撞状态机控制位置）
+    if(!(this.type===3 && this.chargeState!=='idle')){
+      this.y+=this.dirY*55*dt;
+      if(this.y<130) this.dirY=1;
+      if(this.y>H-130) this.dirY=-1;
+    }
     const ratio=this.hp/this.maxHp;
     const newPhase = ratio>0.5?1:(ratio>0.25?2:3);
     if(newPhase!==this.phase){ this.phase=newPhase; this.game.toast('BOSS 阶段 '+this.phase); }
@@ -2973,6 +3004,261 @@ class Boss{
         if(this.continuousLaserDur<=0){
           this.continuousLaserActive=false;
           this.continuousLaserTimer = this.phase===3?2.5:(this.phase===2?3.5:5.0);   // 阶段越高冷却越短
+        }
+      }
+    }
+
+    // ===== Boss 专属机制 =====
+    if(this.type===2){
+      // boss2: 周期性召唤障碍物（小行星 + 碎片，玩家需躲避）
+      this.obstacleTimer-=dt;
+      if(this.obstacleTimer<=0){
+        this.obstacleTimer = this.phase===3?3.5:(this.phase===2?4.5:6.0);
+        // 召唤 2-3 个障碍物敌人（不带开火的小行星 + 偶尔大碎片）
+        const n = this.phase===3?3:2;
+        for(let i=0;i<n;i++){
+          const t = Math.random()<0.3?'asteroid_m':'asteroid_s';
+          this.game.enemies.push(new Enemy(t, this.x-rand(40,100), this.y+rand(-80,80), this.game));
+        }
+        if(this.phase>=2 && Math.random()<0.5){
+          // 阶段 2 起偶尔加入大碎片（爆炸后散弹）
+          this.game.enemies.push(new Enemy('debris_big', this.x-rand(30,80), this.y+rand(-60,60), this.game));
+        }
+        this.game.toast('注意躲避障碍！');
+        Audio2.alarm();
+      }
+    }
+
+    if(this.type===3){
+      // boss3: 定时加速冲撞玩家后归位
+      if(this.chargeState==='idle'){
+        this.chargeTimer-=dt;
+        if(this.chargeTimer<=0){
+          // 锁定玩家当前位置，开始充能
+          this.chargeOriginX=this.x; this.chargeOriginY=this.y;
+          this.chargeTargetX=this.game.player.x;
+          this.chargeTargetY=this.game.player.y;
+          this.chargeState='charging';
+          this.chargeDur=0.8;   // 充能 0.8s
+          this.game.toast('BOSS 充能中！');
+          Audio2.alarm();
+        }
+      } else if(this.chargeState==='charging'){
+        // 充能阶段：原地不动，闪烁警示（用 hitFlash 制造闪烁）
+        this.chargeDur-=dt;
+        this.hitFlash=0.05;
+        if(this.chargeDur<=0){
+          // 切换到冲刺阶段
+          this.chargeState='dashing';
+          this.chargeDur=0.5;   // 冲刺持续 0.5s
+          Audio2.missile();
+        }
+      } else if(this.chargeState==='dashing'){
+        // 冲刺：朝锁定位置高速移动
+        this.chargeDur-=dt;
+        const tt = 1 - this.chargeDur/0.5;   // 0→1
+        this.x = this.chargeOriginX + (this.chargeTargetX-this.chargeOriginX)*tt;
+        this.y = this.chargeOriginY + (this.chargeTargetY-this.chargeOriginY)*tt;
+        // 接触玩家造成伤害
+        const p=this.game.player;
+        if(p.alive && p.invincible<=0){
+          if(Math.abs(p.x-this.x) < 60 && Math.abs(p.y-this.y) < 50){
+            p.hurt(1);
+          }
+        }
+        if(this.chargeDur<=0){
+          // 切换到归位阶段
+          this.chargeState='returning';
+          this.chargeDur=1.2;
+          this.chargeOriginX=this.x; this.chargeOriginY=this.y;
+          // 归位目标是屏幕右侧的常规位置
+          this.chargeTargetX=this.game.camX + W - 150;
+          this.chargeTargetY=H/2;
+        }
+      } else if(this.chargeState==='returning'){
+        // 归位：用 ease-out 回到原位
+        this.chargeDur-=dt;
+        const tt = 1 - Math.max(0,this.chargeDur)/1.2;
+        const easeT = 1-(1-tt)*(1-tt);  // ease-out
+        this.x = this.chargeOriginX + (this.chargeTargetX-this.chargeOriginX)*easeT;
+        this.y = this.chargeOriginY + (this.chargeTargetY-this.chargeOriginY)*easeT;
+        if(this.chargeDur<=0){
+          this.chargeState='idle';
+          this.chargeTimer = this.phase===3?3.5:(this.phase===2?4.5:6.0);
+        }
+      }
+      // 充能/冲刺期间覆盖默认上下移动（已通过直接修改 x/y）
+      if(this.chargeState!=='idle'){
+        // 重置 dirY 防抖
+      }
+    }
+
+    if(this.type===4){
+      // boss4: 目标定向多发扫射弹幕（追踪玩家位置，连续发射多发）
+      this.sweepTimer-=dt;
+      if(this.sweepTimer<=0){
+        this.sweepTimer = this.phase===3?2.5:(this.phase===2?3.5:5.0);
+        // 朝玩家方向连续发射 6 发扇形扫射弹幕
+        const p=this.game.player;
+        const base=Math.atan2(p.y-this.y, p.x-this.x);
+        const sp=CFG.enemyBulletSpeed*1.1;
+        // 3 层扇形（不同速度叠合，形成扫射效果）
+        for(let layer=0;layer<3;layer++){
+          const n = 4+this.phase;   // 阶段越高发数越多
+          const ls = sp * (0.8+layer*0.15);
+          for(let i=0;i<n;i++){
+            const a=base+(i-(n-1)/2)*0.18;
+            this.game.bullets.push(new Bullet(this.x-40,this.y,Math.cos(a)*ls,Math.sin(a)*ls,
+              {w:9,h:9,dmg:1,color:'#ff5a3a',friendly:false}));
+          }
+        }
+        this.game.toast('扫射弹幕！');
+        Audio2.laser();
+      }
+    }
+
+    if(this.type===5 && this.phase===3){
+      // boss5 阶段3：屏幕中间发射顺时针/逆时针旋转的激光
+      // 玩家必须顺着激光移动方向跟着慢慢移动
+      if(!this.rotLaserActive){
+        this.rotLaserTimer-=dt;
+        if(this.rotLaserTimer<=0){
+          // 启动一轮旋转激光
+          this.rotLaserActive=true;
+          this.rotLaserDur=5.0;   // 持续 5 秒
+          this.rotLaserAngle=0;
+          this.rotLaserDir = Math.random()<0.5?1:-1;   // 随机顺/逆时针
+          this.game.toast('旋转激光！跟着方向移动！');
+          Audio2.laser();
+        }
+      } else {
+        this.rotLaserDur-=dt;
+        // 旋转速度：约 1 圈/4 秒 = π/2 rad/s
+        this.rotLaserAngle += this.rotLaserDir * (Math.PI/2) * dt;
+        // 检测玩家是否在激光路径上（激光从屏幕中央向外延伸）
+        const cx=this.game.camX+W/2, cy=H/2;
+        const p=this.game.player;
+        // 玩家相对中心的角度
+        const playerAng = Math.atan2(p.y-cy, p.x-cx);
+        // 角度差（归一化到 [-π, π]）
+        let dAng = playerAng - this.rotLaserAngle;
+        while(dAng>Math.PI) dAng-=2*Math.PI;
+        while(dAng<-Math.PI) dAng+=2*Math.PI;
+        // 玩家到中心距离
+        const distToCenter = Math.hypot(p.x-cx, p.y-cy);
+        // 在激光扇形范围内（角度差<0.12rad）且距离>40
+        if(Math.abs(dAng)<0.12 && distToCenter>40 && p.invincible<=0){
+          // 每 0.15s 造成 1 点伤害
+          if(!this._rotLaserHurtT) this._rotLaserHurtT=0;
+          this._rotLaserHurtT+=dt;
+          if(this._rotLaserHurtT>=0.15){
+            this._rotLaserHurtT=0;
+            p.hurt(1);
+          }
+        }
+        if(this.rotLaserDur<=0){
+          this.rotLaserActive=false;
+          this.rotLaserTimer=4.0;   // 4 秒冷却
+        }
+      }
+    }
+
+    if(this.type===6){
+      // boss6: 大范围能量波（玩家躲角落）+ 弹射激光
+      // 能量波：周期性扩散圆环（玩家必须躲到屏幕角落）
+      if(!this.energyWaveActive){
+        this.energyWaveTimer-=dt;
+        if(this.energyWaveTimer<=0){
+          this.energyWaveActive=true;
+          this.energyWaveDur=2.5;   // 能量波持续 2.5 秒
+          this.game.toast('能量波！躲到角落！');
+          Audio2.alarm();
+        }
+      } else {
+        this.energyWaveDur-=dt;
+        // 能量波持续期间：每隔 0.3s 检查玩家是否在屏幕"安全区"（4 角 ±80px）
+        if(!this._waveHurtT) this._waveHurtT=0;
+        this._waveHurtT+=dt;
+        if(this._waveHurtT>=0.3){
+          this._waveHurtT=0;
+          const p=this.game.player;
+          const cx=this.game.camX;
+          // 4 个角的安全区
+          const safeZones = [
+            {x:cx+60, y:60},
+            {x:cx+W-60, y:60},
+            {x:cx+60, y:H-60},
+            {x:cx+W-60, y:H-60},
+          ];
+          let inSafe=false;
+          for(const sz of safeZones){
+            if(Math.abs(p.x-sz.x)<100 && Math.abs(p.y-sz.y)<100){ inSafe=true; break; }
+          }
+          if(!inSafe && p.invincible<=0){
+            p.hurt(1);
+          }
+        }
+        if(this.energyWaveDur<=0){
+          this.energyWaveActive=false;
+          this.energyWaveTimer = this.phase===3?5.0:8.0;
+        }
+      }
+
+      // 弹射激光：从 Boss 朝某方向发射，撞墙后按法线反弹，最多 4 次反弹
+      if(!this.ricochetLaserActive){
+        this.ricochetLaserTimer-=dt;
+        if(this.ricochetLaserTimer<=0){
+          // 启动一发弹射激光
+          this.ricochetLaserActive=true;
+          this.ricochetLaserBounces=0;
+          this.ricochetLaserLife=6.0;   // 最长存在 6 秒
+          // 起点在 Boss 位置，朝玩家方向发射
+          const p=this.game.player;
+          const dx=p.x-this.x, dy=p.y-this.y;
+          const m=Math.hypot(dx,dy)||1;
+          const sp=520;
+          this.ricochetLaserX=this.x;
+          this.ricochetLaserY=this.y;
+          this.ricochetLaserVx=dx/m*sp;
+          this.ricochetLaserVy=dy/m*sp;
+          this.game.toast('弹射激光！');
+          Audio2.laser();
+        }
+      } else {
+        this.ricochetLaserLife-=dt;
+        // 移动激光
+        this.ricochetLaserX += this.ricochetLaserVx*dt;
+        this.ricochetLaserY += this.ricochetLaserVy*dt;
+        // 撞墙反弹（屏幕边界）
+        const leftX=this.game.camX+10, rightX=this.game.camX+W-10;
+        const topY=10, botY=H-10;
+        let bounced=false;
+        if(this.ricochetLaserX < leftX){ this.ricochetLaserX=leftX; this.ricochetLaserVx=-this.ricochetLaserVx; bounced=true; }
+        else if(this.ricochetLaserX > rightX){ this.ricochetLaserX=rightX; this.ricochetLaserVx=-this.ricochetLaserVx; bounced=true; }
+        if(this.ricochetLaserY < topY){ this.ricochetLaserY=topY; this.ricochetLaserVy=-this.ricochetLaserVy; bounced=true; }
+        else if(this.ricochetLaserY > botY){ this.ricochetLaserY=botY; this.ricochetLaserVy=-this.ricochetLaserVy; bounced=true; }
+        if(bounced){
+          this.ricochetLaserBounces++;
+          Audio2.shield();
+          // 反弹后微减速，避免太凶
+          this.ricochetLaserVx *= 0.95;
+          this.ricochetLaserVy *= 0.95;
+          if(this.ricochetLaserBounces>=this.ricochetLaserMaxBounces){
+            this.ricochetLaserActive=false;
+            this.ricochetLaserTimer = this.phase===3?3.5:5.0;
+          }
+        }
+        // 碰撞玩家
+        const p=this.game.player;
+        if(p.alive && p.invincible<=0){
+          if(Math.abs(p.x-this.ricochetLaserX)<22 && Math.abs(p.y-this.ricochetLaserY)<22){
+            p.hurt(1);
+          }
+        }
+        // 寿命到也消失
+        if(this.ricochetLaserLife<=0){
+          this.ricochetLaserActive=false;
+          this.ricochetLaserTimer = this.phase===3?3.5:5.0;
         }
       }
     }
@@ -3410,6 +3696,98 @@ class Boss{
     ctx.restore();
     // 连续激光（独立于 translate，覆盖全屏水平光束）
     this.drawContinuousLaser(ctx, camX);
+    // Boss 专属机制的绘制
+    this.drawSpecials(ctx, camX);
+  }
+  // 绘制 Boss 专属机制（boss5 旋转激光、boss6 能量波/弹射激光、boss3 充能警示等）
+  drawSpecials(ctx, camX){
+    // boss3 充能警示（红色脉冲光环）
+    if(this.type===3 && this.chargeState==='charging'){
+      const sx=this.x-camX;
+      ctx.save();
+      const pulse=0.6+Math.sin(this.t*30)*0.4;
+      ctx.shadowBlur=20; ctx.shadowColor='#ff3a3a';
+      ctx.strokeStyle='rgba(255,58,58,'+pulse+')';
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(sx,this.y,80+Math.sin(this.t*20)*8,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx,this.y,40+Math.sin(this.t*30)*5,0,Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+    // boss5 旋转激光（从屏幕中央向外延伸的光束）
+    if(this.type===5 && this.rotLaserActive){
+      const cx=W/2, cy=H/2;
+      const endX = cx + Math.cos(this.rotLaserAngle)*W;
+      const endY = cy + Math.sin(this.rotLaserAngle)*W;
+      const pulse=1+Math.sin(this.t*20)*0.2;
+      ctx.save();
+      ctx.shadowBlur=24; ctx.shadowColor='#d0d0e0';
+      // 外光晕
+      ctx.strokeStyle='rgba(208,208,224,0.35)';
+      ctx.lineWidth=22*pulse;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(endX,endY); ctx.stroke();
+      // 主光束
+      ctx.strokeStyle='#d0d0e0';
+      ctx.lineWidth=8*pulse;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(endX,endY); ctx.stroke();
+      // 内核白热
+      ctx.shadowBlur=0;
+      ctx.strokeStyle='rgba(255,255,255,0.9)';
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(endX,endY); ctx.stroke();
+      // 中心源点
+      ctx.shadowBlur=20; ctx.shadowColor='#fff';
+      ctx.fillStyle='#fff';
+      ctx.beginPath(); ctx.arc(cx,cy,8+Math.sin(this.t*15)*2,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+    // boss6 能量波（屏幕四角的红色脉冲警示）
+    if(this.type===6 && this.energyWaveActive){
+      const cx=this.game.camX;
+      ctx.save();
+      const pulse=0.5+Math.sin(this.t*15)*0.3;
+      // 屏幕非安全区被红色脉冲覆盖
+      ctx.fillStyle='rgba(255,32,48,'+(0.18*pulse)+')';
+      ctx.fillRect(0,0,W,H);
+      // 4 个安全区高亮
+      const safeZones = [
+        {x:60, y:60},
+        {x:W-60, y:60},
+        {x:60, y:H-60},
+        {x:W-60, y:H-60},
+      ];
+      ctx.strokeStyle='rgba(94,247,255,0.8)';
+      ctx.lineWidth=2;
+      for(const sz of safeZones){
+        ctx.beginPath(); ctx.arc(sz.x,sz.y,100,0,Math.PI*2); ctx.stroke();
+        ctx.fillStyle='rgba(94,247,255,0.08)';
+        ctx.beginPath(); ctx.arc(sz.x,sz.y,100,0,Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    // boss6 弹射激光（小光球，留下尾迹）
+    if(this.type===6 && this.ricochetLaserActive){
+      const sx=this.ricochetLaserX-camX;
+      const sy=this.ricochetLaserY;
+      ctx.save();
+      // 外光晕
+      ctx.shadowBlur=20; ctx.shadowColor='#ff3a3a';
+      const g=ctx.createRadialGradient(sx,sy,0,sx,sy,20);
+      g.addColorStop(0,'rgba(255,255,255,0.95)');
+      g.addColorStop(0.5,'rgba(255,58,58,0.8)');
+      g.addColorStop(1,'rgba(255,58,58,0)');
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(sx,sy,20,0,Math.PI*2); ctx.fill();
+      // 内核
+      ctx.shadowBlur=0;
+      ctx.fillStyle='#fff';
+      ctx.beginPath(); ctx.arc(sx,sy,5,0,Math.PI*2); ctx.fill();
+      // 反弹次数指示器
+      ctx.fillStyle='#ffd24d';
+      ctx.font='bold 12px monospace';
+      ctx.textAlign='center';
+      ctx.fillText('弹 '+this.ricochetLaserBounces+'/'+this.ricochetLaserMaxBounces, sx, sy-26);
+      ctx.restore();
+    }
   }
 }
 
