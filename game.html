@@ -1578,7 +1578,13 @@ class Player{
       this.spreadLevel++;
       Audio2.levelup();
       // 互斥：升级散弹时关闭激光
-      if(this.laserLevel>0){ this.laserLevel=0; this.abilities.delete('laser'); this.game.toast('激光 → 散弹'); }
+      if(this.laserLevel>0){
+        this.laserLevel=0;
+        this.abilities.delete('laser');
+        this.laserActive=false;   // 立即关闭激光状态，避免动画残留
+        this.laserT=0;
+        this.game.toast('激光 → 散弹');
+      }
       this.abilities.add('spread');
       this.game.toast('散弹 Lv'+this.spreadLevel+'/3 ('+(this.spreadLevel===1?3:this.spreadLevel===2?5:7)+'路, -'+up.cost+'能量)');
       spawnExplosion(this.game.particles,this.x,this.y,COLORS.bullet,20,1.2);
@@ -1660,6 +1666,9 @@ class Player{
           this.updateLaser(dt);
         } else { this.laserT=0; }
       } else {
+        // 非激光武器时确保激光状态完全关闭（修复：从激光切到散弹时激光动画持续）
+        this.laserActive = false;
+        this.laserT = 0;
         this.fireTimer-=dt;
         if(firing && this.fireTimer<=0) this.shoot();
       }

@@ -1420,6 +1420,30 @@ test('Boss 阶段3 移动更主动：朝玩家 Y 漂移', ()=>{
   if(b.y >= bossY0) throw new Error('Boss P3 应朝玩家方向（上）漂移, y0='+bossY0+' y1='+b.y);
 });
 
+// T50: 从激光升级到散弹时，激光动画立即关闭
+test('从激光升级到散弹时激光动画立即关闭', ()=>{
+  const g = makeGame();
+  // 先升级激光到 1 级
+  g.player.crystals = 100;
+  g.player.tryUpgrade(4);   // 激光
+  if(g.player.laserLevel !== 1) throw new Error('激光升级失败, level='+g.player.laserLevel);
+  if(!g.player.hasLaser) throw new Error('hasLaser 应为 true');
+  // 模拟按住空格开火：激光激活
+  sandbox.Input.keys[' '] = true;
+  g.player.update(0.02);
+  if(!g.player.laserActive) throw new Error('按住空格时激光应激活');
+  // 升级散弹：应立即关闭激光状态
+  g.player.tryUpgrade(3);   // 散弹
+  // 立即检查（update 之前）：laserActive 应为 false
+  if(g.player.laserActive) throw new Error('升级散弹后 laserActive 应立即为 false');
+  if(g.player.laserLevel !== 0) throw new Error('升级散弹后 laserLevel 应为 0');
+  if(g.player.hasLaser) throw new Error('升级散弹后 hasLaser 应为 false');
+  // 再 update 一次：laserActive 仍应为 false（动画不应残留）
+  g.player.update(0.02);
+  if(g.player.laserActive) throw new Error('升级散弹后 update 后激光不应再激活');
+  sandbox.Input.keys[' '] = false;
+});
+
 // 跑测试
 let passed = 0, failed = 0;
 for(const t of tests){
