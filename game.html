@@ -1998,6 +1998,15 @@ class Enemy{
   update(dt){
     this.t+=dt;
     if(this.hitFlash>0) this.hitFlash-=dt;
+    // 弹幕连发状态：按 _burstInterval 间隔连续发射 _burstCount 颗瞄准子弹
+    if(this._burstCount && this._burstCount>0){
+      this._burstTimer-=dt;
+      if(this._burstTimer<=0){
+        this._burstCount--;
+        this._burstTimer = this._burstInterval;
+        this.shootAtPlayer();
+      }
+    }
     switch(this.type){
       case 'asteroid_s': case 'asteroid_m': case 'asteroid_l':
         this.x+=this.vx*dt; this.y+=this.vy*dt; this.ang+=this.spin*dt;
@@ -2007,34 +2016,63 @@ class Enemy{
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*2)*30;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.4; this.shootAtPlayer(); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=1.4;
+          // 第1关：基本瞄准，少量前方散射
+          if(Math.random()<0.3) this.shootFan(2,0.25);
+          else this.shootAtPlayer();
+        }
         break;
       case 'turret':
         this.x+=this.vx*dt;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.5; this.shootFan(3,0.3); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=1.5;
+          // 第2关：交替前方散射 / 朝玩家扇形
+          if(Math.random()<0.5) this.shootFan(3,0.3);
+          else this.shootAimedFan(3,0.2);
+        }
         break;
       case 'drone_swarm':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*4+this.x*0.02)*20;
+        // 第2关：低概率瞄准射击（增加变数）
+        this.fireTimer-=dt*this.game.fireScale();
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=2.5;
+          if(Math.random()<0.5) this.shootAtPlayer();
+        }
         break;
       case 'laser_node':
         this.x+=this.vx*dt;
         this.charge+=dt;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=2.0; this.shootAtPlayer(); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=2.0;
+          // 第2关：3 连发瞄准弹幕
+          this.shootAimedBurst(3, 0.18);
+        }
         break;
       case 'core_cell':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*2.5)*40;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.2; this.shootFan(3,0.25); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=1.2;
+          // 第3关：交替前方散射 / 360° 环形
+          if(Math.random()<0.5) this.shootFan(3,0.25);
+          else this.shootRing(8);
+        }
         break;
       case 'defender':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*1.8)*50;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.0; this.shootAtPlayer(); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=1.2;
+          // 第3关：3 连发瞄准弹幕（更难）
+          this.shootAimedBurst(3, 0.15);
+        }
         break;
       case 'seeker':
         this.x+=this.vx*dt;
@@ -2045,13 +2083,22 @@ class Enemy{
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*3)*70;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=2.2; this.shootAtPlayer(); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=2.2;
+          // 第4关：2 连发瞄准弹幕
+          this.shootAimedBurst(2, 0.2);
+        }
         break;
       case 'fire_snake':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*4+this.x*0.03)*45;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.6; this.shootFan(4,0.3); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=1.8;
+          // 第4关：交替前方扇形 / 360° 环形
+          if(Math.random()<0.5) this.shootFan(4,0.3);
+          else this.shootRing(8);
+        }
         break;
       case 'fire_bird':
         this.x+=this.vx*dt; this.y+=this.vy*dt;
@@ -2062,19 +2109,34 @@ class Enemy{
         const dyb=this.game.player.y-this.y;
         this.y += clamp(dyb,-60,60)*dt;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=3.0; this.shootAtPlayer(); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=3.0;
+          // 第4关：交替瞄准 / 朝玩家扇形
+          if(Math.random()<0.5) this.shootAtPlayer();
+          else this.shootAimedFan(3,0.3);
+        }
         break;
       case 'mutant_grunt':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*2.2)*32;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=1.8; this.shootCorrosive(); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=1.8;
+          // 第5关：交替瞄准腐蚀液 / 腐蚀液环形
+          if(Math.random()<0.6) this.shootCorrosive();
+          else this.shootCorrosiveRing(8);
+        }
         break;
       case 'mutant_brute':
         this.x+=this.vx*dt;
         this.y=this.baseY+Math.sin(this.t*1.4)*22;
         this.fireTimer-=dt*this.game.fireScale();
-        if(this.fireTimer<=0 && this.x<this.game.camX+W){ this.fireTimer=2.4; this.shootCorrosiveFan(3,0.32); }
+        if(this.fireTimer<=0 && this.x<this.game.camX+W){
+          this.fireTimer=2.4;
+          // 第5关：交替腐蚀液扇形 / 大环形（10 颗）
+          if(Math.random()<0.5) this.shootCorrosiveFan(3,0.32);
+          else this.shootCorrosiveRing(10);
+        }
         break;
       case 'mutant_crawler':
         this.x+=this.vx*dt;
@@ -2117,8 +2179,16 @@ class Enemy{
         this.fireTimer-=dt*this.game.fireScale();
         if(this.fireTimer<=0 && this.x<this.game.camX+W){
           this.fireTimer=2.0;
-          // 发射碎片（召唤 debris 敌人）
-          this.game.enemies.push(new Enemy('debris', this.x-20, this.y+rand(-30,30), this.game));
+          // 第6关：3 种模式交替——召唤碎片 / 360° 环形 / 4 连发弹幕
+          const r=Math.random();
+          if(r<0.4){
+            // 召唤碎片
+            this.game.enemies.push(new Enemy('debris', this.x-20, this.y+rand(-30,30), this.game));
+          } else if(r<0.75){
+            this.shootRing(12);
+          } else {
+            this.shootAimedBurst(4, 0.14);
+          }
         }
         break;
     }
@@ -2156,6 +2226,43 @@ class Enemy{
       const a=base+(i-(n-1)/2)*spread;
       this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
+    }
+  }
+  // 朝玩家方向的扇形散射
+  shootAimedFan(n,spread){
+    const p=this.game.player;
+    const base=Math.atan2(p.y-this.y, p.x-this.x);
+    const sp=CFG.enemyBulletSpeed;
+    for(let i=0;i<n;i++){
+      const a=base+(i-(n-1)/2)*spread;
+      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
+    }
+  }
+  // 360° 环形发射（自身周围一圈）
+  shootRing(n,speed){
+    const sp = speed || CFG.enemyBulletSpeed*0.85;
+    const off = Math.random()*Math.PI*2;
+    for(let i=0;i<n;i++){
+      const a=off+(i/n)*Math.PI*2;
+      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
+    }
+  }
+  // 朝玩家连发弹幕：设置计数器，在 update 中按间隔连续发射
+  shootAimedBurst(count, interval){
+    this._burstCount = count;
+    this._burstInterval = interval || 0.15;
+    this._burstTimer = 0;        // 立即发射第一颗
+  }
+  // 腐蚀液 360° 环形
+  shootCorrosiveRing(n){
+    const sp=CFG.enemyBulletSpeed*0.8;
+    const off=Math.random()*Math.PI*2;
+    for(let i=0;i<n;i++){
+      const a=off+(i/n)*Math.PI*2;
+      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        {w:11,h:11,dmg:1,color:COLORS.corrosive,friendly:false,corrosive:true}));
     }
   }
   takeDamage(dmg){

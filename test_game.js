@@ -981,6 +981,106 @@ test('drawTitle 各难度下绘制不抛异常', ()=>{
   }
 });
 
+// T27: 新增开火方法存在
+test('Enemy 新增开火方法存在（shootAimedFan/shootRing/shootAimedBurst/shootCorrosiveRing）', ()=>{
+  const g = makeGame();
+  const e = new sandbox.Enemy('turret', 100, 100, g);
+  for(const m of ['shootAimedFan','shootRing','shootAimedBurst','shootCorrosiveRing']){
+    if(typeof e[m] !== 'function') throw new Error('Enemy 缺少方法: '+m);
+  }
+});
+
+// T28: shootRing 发射 n 颗子弹（360° 环形）
+test('shootRing 发射指定数量的子弹（360° 环形）', ()=>{
+  const g = makeGame(2);
+  const e = new sandbox.Enemy('core_cell', 200, 200, g);
+  const before = g.bullets.length;
+  e.shootRing(8);
+  if(g.bullets.length - before !== 8) throw new Error('shootRing(8) 应发射 8 颗, 实际 '+(g.bullets.length-before));
+  // 验证子弹方向均匀分布（角度差约 45°）
+  const angles = g.bullets.slice(-8).map(b=>Math.atan2(b.vy, b.vx));
+  // 排序后相邻角度差应接近 2π/8
+  angles.sort((a,b)=>a-b);
+  const expectedDiff = (2*Math.PI/8);
+  for(let i=1;i<8;i++){
+    const d = angles[i]-angles[i-1];
+    if(Math.abs(d - expectedDiff) > 0.1 && Math.abs(d - expectedDiff - 2*Math.PI) > 0.1)
+      throw new Error('环形子弹角度分布不均匀: '+d.toFixed(3)+' vs '+expectedDiff.toFixed(3));
+  }
+});
+
+// T29: shootAimedFan 朝玩家方向扇形发射
+test('shootAimedFan 朝玩家方向扇形发射 n 颗', ()=>{
+  const g = makeGame();
+  const e = new sandbox.Enemy('turret', 200, 200, g);
+  g.player.x = 100; g.player.y = 200;  // 玩家在敌人左侧
+  const before = g.bullets.length;
+  e.shootAimedFan(3, 0.2);
+  if(g.bullets.length - before !== 3) throw new Error('shootAimedFan(3) 应发射 3 颗, 实际 '+(g.bullets.length-before));
+  // 中心子弹应朝玩家方向（左 = -x 方向）
+  const mid = g.bullets[before+1];
+  if(mid.vx >= 0) throw new Error('中心子弹应朝玩家方向（左）, vx='+mid.vx);
+});
+
+// T30: shootCorrosiveRing 发射腐蚀液子弹
+test('shootCorrosiveRing 发射腐蚀液子弹', ()=>{
+  const g = makeGame(4);
+  const e = new sandbox.Enemy('mutant_grunt', 200, 200, g);
+  const before = g.bullets.length;
+  e.shootCorrosiveRing(10);
+  if(g.bullets.length - before !== 10) throw new Error('shootCorrosiveRing(10) 应发射 10 颗, 实际 '+(g.bullets.length-before));
+  // 验证子弹带腐蚀属性
+  const ring = g.bullets.slice(-10);
+  for(const b of ring){
+    if(!b.corrosive) throw new Error('shootCorrosiveRing 子弹应带腐蚀属性');
+  }
+});
+
+// T31: shootAimedBurst 触发连发状态，update 中按间隔连续发射
+test('shootAimedBurst 触发连发状态，update 中连续发射', ()=>{
+  const g = makeGame();
+  const e = new sandbox.Enemy('laser_node', 200, 200, g);
+  e.x = g.camX + 100;  // 在屏内
+  // 触发 3 连发
+  e.shootAimedBurst(3, 0.15);
+  if(e._burstCount !== 3) throw new Error('_burstCount 应为 3, 实际 '+e._burstCount);
+  if(e._burstInterval !== 0.15) throw new Error('_burstInterval 应为 0.15, 实际 '+e._burstInterval);
+  // 第一次 update 应立即发射第一颗（_burstTimer<=0）
+  const before0 = g.bullets.length;
+  e.update(0.01);
+  if(g.bullets.length <= before0) throw new Error('第一次 update 应发射第一颗子弹');
+  if(e._burstCount !== 2) throw new Error('发射后 _burstCount 应为 2, 实际 '+e._burstCount);
+  // 立即再次 update 不应发射（需等间隔）
+  const before1 = g.bullets.length;
+  e.update(0.01);
+  if(g.bullets.length > before1) throw new Error('间隔未到不应发射');
+  // 推进 0.15s 后应再发射一颗
+  e.update(0.15);
+  if(g.bullets.length <= before1) throw new Error('间隔后应再发射一颗');
+  if(e._burstCount !== 1) throw new Error('第二颗发射后 _burstCount 应为 1, 实际 '+e._burstCount);
+});
+
+// T32: 第6关 ruin_core 多模式开火（召唤碎片 / 环形 / 弹幕）
+test('ruin_core 多模式开火：召唤碎片 / 环形 / 弹幕', ()=>{
+  const g = makeGame(5);
+  // 在屏内 + 让 fireTimer 触发
+  const ruin = new sandbox.Enemy('ruin_core', 200, 200, g);
+  ruin.x = g.camX + 100;
+  // 跑多次以触发各种模式（验证不抛异常）
+  let foundDebris=false, foundBullets=false;
+  for(let i=0;i<50;i++){
+    ruin.fireTimer = 0;
+    const enemiesBefore = g.enemies.length;
+    const bulletsBefore = g.bullets.length;
+    ruin.update(0.01);
+    if(g.enemies.length > enemiesBefore) foundDebris = true;
+    if(g.bullets.length - bulletsBefore > 5) foundBullets = true;  // shootRing/shootAimedBurst
+    if(foundDebris && foundBullets) break;
+  }
+  if(!foundDebris) throw new Error('ruin_core 应触发召唤碎片模式');
+  if(!foundBullets) throw new Error('ruin_core 应触发环形/弹幕模式');
+});
+
 // 跑测试
 let passed = 0, failed = 0;
 for(const t of tests){
