@@ -3079,10 +3079,11 @@ class Boss{
       if(this.chargeState==='idle'){
         this.chargeTimer-=dt;
         if(this.chargeTimer<=0){
-          // 锁定玩家当前位置，开始充能
+          // 锁定玩家当前 Y，但 X 目标是冲穿到屏幕左端外（贯穿整个屏幕，玩家无处可躲）
           this.chargeOriginX=this.x; this.chargeOriginY=this.y;
-          this.chargeTargetX=this.game.player.x;
           this.chargeTargetY=this.game.player.y;
+          // 冲撞目标 X：屏幕左边缘再往外 60px（贯穿整个屏幕宽度）
+          this.chargeTargetX=this.game.camX - 60;
           this.chargeState='charging';
           this.chargeDur=0.8;   // 充能 0.8s
           this.game.toast('BOSS 充能中！');
@@ -3095,19 +3096,19 @@ class Boss{
         if(this.chargeDur<=0){
           // 切换到冲刺阶段
           this.chargeState='dashing';
-          this.chargeDur=0.5;   // 冲刺持续 0.5s
+          this.chargeDur=0.7;   // 冲刺持续 0.7s（更长距离，贯穿屏幕）
           Audio2.missile();
         }
       } else if(this.chargeState==='dashing'){
-        // 冲刺：朝锁定位置高速移动
+        // 冲刺：朝锁定 Y + 贯穿屏幕左端 高速移动
         this.chargeDur-=dt;
-        const tt = 1 - this.chargeDur/0.5;   // 0→1
+        const tt = 1 - this.chargeDur/0.7;   // 0→1
         this.x = this.chargeOriginX + (this.chargeTargetX-this.chargeOriginX)*tt;
         this.y = this.chargeOriginY + (this.chargeTargetY-this.chargeOriginY)*tt;
-        // 接触玩家造成伤害
+        // 接触玩家造成伤害（碰撞箱放大，确保覆盖整条冲刺路径）
         const p=this.game.player;
         if(p.alive && p.invincible<=0){
-          if(Math.abs(p.x-this.x) < 60 && Math.abs(p.y-this.y) < 50){
+          if(Math.abs(p.x-this.x) < 70 && Math.abs(p.y-this.y) < 60){
             p.hurt(1);
           }
         }

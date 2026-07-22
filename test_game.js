@@ -1135,9 +1135,9 @@ test('Boss3 冲撞机制：idle→charging→dashing→returning→idle', ()=>{
   const dashStartY = b.y;
   for(let i=0;i<80;i++) b.update(0.01);
   if(b.chargeState !== 'dashing') throw new Error('充能 0.8s 后应为 dashing, 实际 '+b.chargeState);
-  // 推进 0.5s 应切换到 returning
-  for(let i=0;i<55;i++) b.update(0.01);
-  if(b.chargeState !== 'returning') throw new Error('冲刺 0.5s 后应为 returning, 实际 '+b.chargeState);
+  // 推进 0.7s 应切换到 returning（新冲刺时长 0.7s）
+  for(let i=0;i<75;i++) b.update(0.01);
+  if(b.chargeState !== 'returning') throw new Error('冲刺 0.7s 后应为 returning, 实际 '+b.chargeState);
   // 推进 1.2s 应回到 idle
   for(let i=0;i<125;i++) b.update(0.01);
   if(b.chargeState !== 'idle') throw new Error('归位 1.2s 后应为 idle, 实际 '+b.chargeState);
@@ -1155,12 +1155,36 @@ test('Boss3 冲撞接触玩家造成伤害', ()=>{
   const livesBefore = g.player.lives;
   // 直接进入 dashing 阶段（已冲刺一半时间，Boss 接近玩家位置）
   b.chargeState='dashing';
-  b.chargeDur = 0.25;  // 剩余 0.25s，tt=0.5
+  b.chargeDur = 0.35;  // 剩余 0.35s（基于新冲刺时长 0.7s），tt=0.5
   b.chargeOriginX = b.x; b.chargeOriginY = b.y;
   b.chargeTargetX = g.player.x; b.chargeTargetY = g.player.y;
   b.update(0.01);
   if(g.player.lives >= livesBefore) throw new Error(`Boss3 冲撞应造成伤害, lives=${g.player.lives} vs ${livesBefore}`);
 });
+
+// T36b: Boss3 冲撞贯穿屏幕（玩家躲在左边缘也会被撞）
+test('Boss3 冲撞贯穿屏幕——玩家躲在左边缘也受伤', ()=>{
+  const g = makeGame(2);
+  const b = new sandbox.Boss(g, 3);
+  b.entered = true;
+  // 玩家躲在屏幕左边缘（贴近 camX+24 边界）
+  g.player.x = g.camX + 30;
+  g.player.y = sandbox.H/2;
+  g.player.invincible = 0;
+  const livesBefore = g.player.lives;
+  // 触发充能：应锁定玩家 Y + 屏幕左端外
+  b.chargeTimer = 0.01;
+  b.update(0.02);
+  if(b.chargeState !== 'charging') throw new Error('应进入 charging, 实际 '+b.chargeState);
+  // chargeTargetX 应在屏幕左端外（camX - 60），不是玩家 x 位置
+  if(b.chargeTargetX > g.camX) throw new Error('冲撞目标 X 应在屏幕左端外, 实际 '+b.chargeTargetX);
+  // 推进到 dashing 完成（充能 0.8s + 冲刺 0.7s）
+  for(let i=0;i<160;i++) b.update(0.01);
+  // 玩家躲在左边缘也应受伤（Boss 冲撞路径覆盖整条屏幕）
+  if(g.player.lives >= livesBefore) throw new Error('玩家在左边缘也应被冲撞到, lives='+g.player.lives+' vs '+livesBefore);
+});
+
+
 
 // T37: Boss4 目标定向多发扫射弹幕
 test('Boss4 目标定向多发扫射弹幕（3 层扇形）', ()=>{
