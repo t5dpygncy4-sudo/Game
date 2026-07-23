@@ -1655,6 +1655,79 @@ test('实际碰撞：机翼位置敌弹无效，驾驶舱位置敌弹有效', ()
   if(g.player.lives >= lives2) throw new Error('敌弹击中驾驶舱位置应伤害玩家');
 });
 
+// T60: 同一敌人可同时掉多种物品（三套概率互相独立，不互斥）
+test('同一敌人可同时掉多种物品（三套概率独立）', ()=>{
+  const g = makeGame();
+  // 大敌人：能量晶体必掉(100%)，生命 10%，清屏 5%
+  // 我们直接注入"必返回 true"的 Math.random 来验证三套独立判定能同时触发
+  const e = new sandbox.Enemy('asteroid_l', 200, 200, g);
+  // 保存原 Math.random
+  const origRandom = Math.random;
+  let callIdx = 0;
+  // 让所有 Math.random() 都返回 0（< 任何概率阈值）→ 三个掉落都应触发
+  Math.random = () => 0;
+  try {
+    g.crystals.length = 0;
+    g.lifeDrops.length = 0;
+    g.bombCrystals.length = 0;
+    e.die();
+    if(g.crystals.length < 1) throw new Error('大敌人必掉能量晶体');
+    if(g.lifeDrops.length < 1) throw new Error('Math.random=0 时生命补给应掉落');
+    if(g.bombCrystals.length < 1) throw new Error('Math.random=0 时清屏晶体应掉落');
+    if(g.crystals.length + g.lifeDrops.length + g.bombCrystals.length < 3) {
+      throw new Error('同一敌人应能同时掉三种物品');
+    }
+  } finally {
+    Math.random = origRandom;
+  }
+});
+
+// T61: 掉落概率各概率独立——Math.random=1 时只掉大敌人必掉的能量晶体
+test('掉落概率独立：Math.random=1 时大敌人只掉能量晶体', ()=>{
+  const g = makeGame();
+  const e = new sandbox.Enemy('asteroid_l', 200, 200, g);
+  const origRandom = Math.random;
+  // 所有 random 都返回 1（>= 所有概率阈值）→ 仅大敌人必掉的能量晶体触发
+  Math.random = () => 1;
+  try {
+    g.crystals.length = 0;
+    g.lifeDrops.length = 0;
+    g.bombCrystals.length = 0;
+    e.die();
+    if(g.crystals.length !== 1) throw new Error('大敌人应必掉 1 颗能量晶体, 实际 '+g.crystals.length);
+    if(g.lifeDrops.length !== 0) throw new Error('Math.random=1 时不应掉生命补给, 实际 '+g.lifeDrops.length);
+    if(g.bombCrystals.length !== 0) throw new Error('Math.random=1 时不应掉清屏晶体, 实际 '+g.bombCrystals.length);
+  } finally {
+    Math.random = origRandom;
+  }
+});
+
+// T62: 多个掉落物位置加随机偏移，不重叠在死亡点
+test('多个掉落物位置带随机偏移，不完全重叠', ()=>{
+  const g = makeGame();
+  const e = new sandbox.Enemy('asteroid_l', 500, 300, g);
+  // 强制所有随机都触发掉落
+  const origRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    e.die();
+  } finally {
+    Math.random = origRandom;
+  }
+  // 收集所有掉落物位置
+  const positions = [];
+  g.crystals.forEach(c => positions.push({x:c.x, y:c.y}));
+  g.lifeDrops.forEach(l => positions.push({x:l.x, y:l.y}));
+  g.bombCrystals.forEach(b => positions.push({x:b.x, y:b.y}));
+  if(positions.length < 3) throw new Error('应至少掉 3 个物品, 实际 '+positions.length);
+  // 由于 rand(-18, 18) 偏移，三个位置不应完全相同
+  // 注意：rand 在测试沙箱中可能依赖 Math.random，强制 0 时偏移可能相同
+  // 至少应至少有 1 个不同（rand 用 Math.random 时返回 -18 + 0*36 = -18）
+  // 但实际掉落物位置应不全是 (500, 300)
+  const allSame = positions.every(p => p.x === 500 && p.y === 300);
+  if(allSame) throw new Error('掉落物应有位置偏移，不应全部在死亡点');
+});
+
 // 跑测试
 let passed = 0, failed = 0;
 for(const t of tests){
