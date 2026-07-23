@@ -52,7 +52,11 @@ const CFG = {
   maxCrystals: 10,            // 能量晶体上限
   invincibleTime: 1.4,
   spawnPadding: 40,
-  playerHitScale: 0.5,
+  // 玩家碰撞箱：仅覆盖飞机前半部分（驾驶舱），尺寸更小且向前偏移
+  // 飞机局部坐标：机头 x=+28，驾驶舱 x=+2..+18，机翼末端 x=-24
+  playerHitW: 18,        // 碰撞箱宽：覆盖驾驶舱 + 机头根部
+  playerHitH: 10,        // 碰撞箱高：机身高度
+  playerHitOffsetX: 8,   // 碰撞箱中心相对玩家中心 X 偏移（朝机头方向前移）
   maxBullets: 800,
   maxParticles: 500,
 };
@@ -1550,7 +1554,11 @@ class Player{
   get hasWingman(){ return this.abilities.has('wingman'); }
   get hasShield(){ return this.abilities.has('shield'); }
   get hasSpeed(){ return this.speedLevel>0; }
-  bounds(){ const s=CFG.playerHitScale; return {x:this.x-this.w*s/2,y:this.y-this.h*s/2,w:this.w*s,h:this.h*s}; }
+  bounds(){
+    // 碰撞箱仅覆盖飞机前半部分（驾驶舱）：尺寸更小且向前偏移
+    const w=CFG.playerHitW, h=CFG.playerHitH;
+    return {x:this.x+CFG.playerHitOffsetX-w/2, y:this.y-h/2, w, h};
+  }
 
   // 数字键1-6升级对应能力
   tryUpgrade(slot){

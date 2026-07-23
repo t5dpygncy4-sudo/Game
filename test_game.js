@@ -1610,6 +1610,51 @@ test('Boss3 冲撞线段碰撞：玩家在路径中段受伤', ()=>{
   if(g.player.lives >= livesBefore) throw new Error('玩家在路径中段应被线段碰撞检测到');
 });
 
+// T58: 玩家碰撞箱仅覆盖飞机前半部分（驾驶舱）— 后半部分（机翼/尾翼）应无碰撞
+test('玩家碰撞箱：仅前半部分（驾驶舱）触发碰撞', ()=>{
+  const g = makeGame();
+  g.player.invincible = 0;
+  g.player.lives = 5;
+  // 取玩家碰撞箱
+  const pb = g.player.bounds();
+  // 1) 碰撞箱 X 中心应位于玩家 X 前方（驾驶舱方向），即 playerHitOffsetX>0
+  const pbCenterX = pb.x + pb.w/2;
+  if(pbCenterX <= g.player.x) throw new Error('碰撞箱中心应前移到机头方向, 实际中心 X='+pbCenterX+' 玩家 X='+g.player.x);
+  // 2) 碰撞箱应明显小于整体飞机尺寸 (38x24)
+  if(pb.w >= 38 || pb.h >= 24) throw new Error('碰撞箱应小于整体飞机尺寸 38x24, 实际 '+pb.w+'x'+pb.h);
+  // 3) 玩家机身中后部（机翼位置）应不在碰撞箱内
+  //    飞机局部坐标：机翼末端约 x=-20，机尾约 x=-12
+  //    机翼位置 (player.x-15, player.y) 应在碰撞箱外
+  const wingX = g.player.x - 15, wingY = g.player.y;
+  const inWing = (wingX >= pb.x && wingX <= pb.x+pb.w && wingY >= pb.y && wingY <= pb.y+pb.h);
+  if(inWing) throw new Error('机翼位置应在碰撞箱外（仅驾驶舱碰撞）');
+  // 4) 驾驶舱位置 (player.x+10, player.y) 应在碰撞箱内
+  const cockpitX = g.player.x + 10, cockpitY = g.player.y;
+  const inCockpit = (cockpitX >= pb.x && cockpitX <= pb.x+pb.w && cockpitY >= pb.y && cockpitY <= pb.y+pb.h);
+  if(!inCockpit) throw new Error('驾驶舱位置应在碰撞箱内');
+});
+
+// T59: 验证实际碰撞行为 — 子弹击中机翼不伤害玩家，击中驾驶舱伤害玩家
+test('实际碰撞：机翼位置敌弹无效，驾驶舱位置敌弹有效', ()=>{
+  const g = makeGame();
+  g.player.invincible = 0;
+  g.player.lives = 5;
+  // 场景 1：敌弹位于玩家机翼位置（应不伤害）
+  g.bullets.length = 0;
+  const eb1 = new sandbox.Bullet(g.player.x - 15, g.player.y, 0, 0, {w:8,h:8,dmg:1,friendly:false});
+  g.bullets.push(eb1);
+  const lives1 = g.player.lives;
+  g.collisions();
+  if(g.player.lives < lives1) throw new Error('敌弹击中机翼位置不应伤害玩家');
+  // 场景 2：敌弹位于玩家驾驶舱位置（应伤害）
+  g.bullets.length = 0;
+  const eb2 = new sandbox.Bullet(g.player.x + 10, g.player.y, 0, 0, {w:8,h:8,dmg:1,friendly:false});
+  g.bullets.push(eb2);
+  const lives2 = g.player.lives;
+  g.collisions();
+  if(g.player.lives >= lives2) throw new Error('敌弹击中驾驶舱位置应伤害玩家');
+});
+
 // 跑测试
 let passed = 0, failed = 0;
 for(const t of tests){
