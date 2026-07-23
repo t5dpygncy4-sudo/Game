@@ -1983,7 +1983,9 @@ class Enemy{
     this.type=type; this.x=x; this.y=y; this.game=game;
     this.dead=false; this.hitFlash=0; this.t=0;
     this.fireTimer=rand(0.6,1.6);
-    this.dropCrystal = Math.random() < 0.175;
+    // 大敌人必掉能量晶体，普通敌人 5% 概率掉落
+    const _isBigType = ['asteroid_l','defender','mutant_brute','debris_big'].includes(type);
+    this.dropCrystal = _isBigType ? true : (Math.random() < 0.05);
     this.setup();
     // HP 系统：以关卡 enemyHp 为基准（1/3/5），按敌人 hpClass 加权（小=1x，中=2x，大=3x）
     // 难度调整：困难 hpMul=1.5，简单/普通 hpMul=1.0
@@ -2315,9 +2317,17 @@ class Enemy{
     spawnExplosion(this.game.particles,this.x,this.y,COLORS.enemy,isBig?22:12,isBig?1.4:1);
     if(isBig) Audio2.bigExplode(); else Audio2.explode();
     if(this.dropCrystal) this.game.spawnCrystal(this.x,this.y);
-    if(isBig && Math.random()<0.105) this.game.spawnLifeDrop(this.x,this.y);
-    // 稀有掉落：清屏晶体（3.5% 概率，大敌人额外至 5.6%）
-    if(Math.random() < (isBig?0.056:0.035)) this.game.spawnBombCrystal(this.x,this.y);
+    // 掉落概率表（按敌人规模区分）
+    //   能量晶体：普通 5% / 大敌人 100%（必掉，dropCrystal 已含）
+    //   生命补给：普通 1% / 大敌人 10%
+    //   清屏晶体：普通 1% / 大敌人 5%
+    if(!isBig){
+      if(Math.random()<0.01) this.game.spawnLifeDrop(this.x,this.y);
+      if(Math.random()<0.01) this.game.spawnBombCrystal(this.x,this.y);
+    } else {
+      if(Math.random()<0.10) this.game.spawnLifeDrop(this.x,this.y);
+      if(Math.random()<0.05) this.game.spawnBombCrystal(this.x,this.y);
+    }
     // 第六关·爆炸碎片：死后向四周散射能量子弹
     if(this.explodeOnDeath){
       const n = this.type==='debris_big' ? 10 : 6;
