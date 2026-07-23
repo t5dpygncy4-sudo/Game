@@ -1468,6 +1468,148 @@ test('从激光升级到散弹时激光动画立即关闭', ()=>{
   sandbox.Input.keys[' '] = false;
 });
 
+// T51: Boss 入场动画期间不可被攻击（玩家子弹无效）
+test('Boss 入场期间玩家子弹不造成伤害', ()=>{
+  const g = makeGame(0);
+  const b = new sandbox.Boss(g, 1);
+  b.entered = false;   // 入场中
+  g.boss = b;          // 注册到 Game
+  const hpBefore = b.hp;
+  // 模拟一颗友方子弹击中 Boss 核心
+  g.bullets.length = 0;
+  const bullet = new sandbox.Bullet(b.x, b.y, -300, 0, {w:8,h:8,dmg:1,friendly:true});
+  g.bullets.push(bullet);
+  g.collisions();
+  if(b.hp !== hpBefore) throw new Error('Boss 入场期间不应被攻击, hp 减少 '+(hpBefore-b.hp));
+  if(bullet.dead) throw new Error('入场期间子弹不应被消耗（应穿过 Boss）');
+});
+
+// T52: Boss 入场期间不伤害玩家（即使身体重叠）
+test('Boss 入场期间不伤害玩家', ()=>{
+  const g = makeGame(0);
+  const b = new sandbox.Boss(g, 1);
+  b.entered = false;
+  g.boss = b;
+  // 把 Boss 放到玩家位置上
+  b.x = g.player.x; b.y = g.player.y;
+  g.player.invincible = 0;
+  const livesBefore = g.player.lives;
+  g.collisions();
+  if(g.player.lives < livesBefore) throw new Error('Boss 入场期间不应伤害玩家, lives 减少 '+(livesBefore-g.player.lives));
+});
+
+// T53: 掉落物使用 camX 相对坐标离屏回收（长关卡不滞留）
+test('掉落物使用 camX 相对坐标离屏回收', ()=>{
+  const g = makeGame(5);   // 第六关长关卡
+  // 假设相机已经推进到 5000
+  g.camX = 5000;
+  // 在相机左侧 200 处生成掉落物（已在屏幕外）
+  const c = new sandbox.Crystal(g.camX - 200, 300);
+  const l = new sandbox.LifeDrop(g.camX - 200, 300);
+  const bc = new sandbox.BombCrystal(g.camX - 200, 300);
+  g.crystals.push(c); g.lifeDrops.push(l); g.bombCrystals.push(bc);
+  c.update(0.01, g.player); l.update(0.01, g.player); bc.update(0.01, g.player);
+  if(!c.dead) throw new Error('离屏 Crystal 应被标记 dead');
+  if(!l.dead) throw new Error('离屏 LifeDrop 应被标记 dead');
+  if(!bc.dead) throw new Error('离屏 BombCrystal 应被标记 dead');
+});
+
+// T54: 玩家本帧被敌弹杀死后不再拾取道具（避免死后误触清屏）
+test('玩家同帧死亡后不拾取道具', ()=>{
+  const g = makeGame();
+  // 玩家剩 1 命且无护盾
+  g.player.lives = 1;
+  g.player.invincible = 0;
+  g.player.shieldHits = 0;
+  // 在玩家位置放置清屏晶体（满库存触发清屏）
+  const bc = new sandbox.BombCrystal(g.player.x, g.player.y);
+  g.bombCrystals.push(bc);
+  g.player.bombs = 2;   // 已满，碰到会触发清屏
+  // 在玩家位置放置敌弹，会立即杀死玩家
+  g.bullets.length = 0;
+  const eb = new sandbox.Bullet(g.player.x, g.player.y, 0, 0, {w:8,h:8,dmg:1,friendly:false});
+  g.bullets.push(eb);
+  g.collisions();
+  // 玩家应死亡
+  if(g.player.alive) throw new Error('玩家应被敌弹杀死');
+  // 清屏晶体应未被拾取（仍在数组中）
+  if(bc.dead) throw new Error('玩家死亡后不应再拾取清屏晶体');
+  // 玩家库存应未变化，且未触发清屏
+  if(g.player.bombs !== 2) throw new Error('玩家库存不应变化');
+});
+
+// T55: 暂停时星空背景不更新
+test('暂停时星空不更新', ()=>{
+  const g = makeGame();
+  g.state = 'PLAYING';
+  // 推进一帧，记录某颗星星位置
+  g.starfield.update(0.05, g.level.scrollSpeed);
+  const star1 = g.starfield.layers[0].stars[0];
+  const x1 = star1.x, y1 = star1.y;
+  // 暂停
+  g.state = 'PAUSED';
+  // 多次 update：星空不应移动
+  for(let i=0;i<5;i++) g.update(0.05);
+  const star2 = g.starfield.layers[0].stars[0];
+  if(star2.x !== x1 || star2.y !== y1) {
+    throw new Error('暂停期间星空不应移动: before=('+x1+','+y1+') after=('+star2.x+','+star2.y+')');
+  }
+});
+
+// T56: Boss5 旋转激光跨会话不立即伤害玩家
+test('Boss5 旋转激光会话切换时不立即伤害', ()=>{
+  const g = makeGame(4);
+  const b = new sandbox.Boss(g, 5);
+  b.entered = true;
+  b.hp = b.maxHp * 0.2;   // 强制 phase=3（boss.update 会根据 hp 重算 phase）
+  // 触发激光
+  b.rotLaserTimer = 0.01;
+  b.update(0.02);
+  if(b.phase !== 3) throw new Error('hp=20% phase 应为 3, 实际 '+b.phase);
+  if(!b.rotLaserActive) throw new Error('激光应激活');
+  // 持续到激光结束
+  b.rotLaserDur = 0.01;
+  for(let i=0;i<5;i++) b.update(0.01);
+  if(b.rotLaserActive) throw new Error('激光应已结束');
+  // 模拟玩家曾经在激光路径上累积了 _rotLaserHurtT
+  b._rotLaserHurtT = 0.14;   // 即将达阈值
+  // 再次激活激光
+  b.rotLaserTimer = 0.01;
+  // 把玩家放到激光路径上（中心右侧，正东方向 angle=0）
+  const cx = g.camX + sandbox.W/2, cy = sandbox.H/2;
+  g.player.x = cx + 200;
+  g.player.y = cy;
+  g.player.invincible = 0;
+  g.player.lives = 5;
+  const livesBefore = g.player.lives;
+  // 短 tick（dt 很小，不应超过 0.15 累积）
+  b.update(0.01);
+  if(b._rotLaserHurtT !== 0) throw new Error('激光重新激活时应重置 _rotLaserHurtT, 实际 '+b._rotLaserHurtT);
+  // 单帧 0.01s 不应造成伤害（远小于 0.15）
+  if(g.player.lives < livesBefore) throw new Error('激光重新激活时不应立即伤害玩家');
+});
+
+// T57: Boss3 冲撞使用线段碰撞（玩家在路径上但不在端点也受伤）
+test('Boss3 冲撞线段碰撞：玩家在路径中段受伤', ()=>{
+  const g = makeGame(2);
+  const b = new sandbox.Boss(g, 3);
+  b.entered = true;
+  b.chargeState = 'dashing';
+  b.chargeDur = 0.35;   // tt=0.5
+  // Boss 从 x=1000 冲到 x=200，路径覆盖 x=600
+  b.chargeOriginX = 1000; b.chargeOriginY = 300;
+  b.chargeTargetX = 200;   b.chargeTargetY = 300;
+  b.x = 1000; b.y = 300;   // 当前位置（会被 tt=0.5 覆盖到 x=600）
+  // 玩家位于 x=600（路径中段）、y=300（路径线上）
+  g.player.x = 600; g.player.y = 300;
+  g.player.invincible = 0;
+  g.player.lives = 5;
+  const livesBefore = g.player.lives;
+  b.update(0.01);
+  // 玩家正好在 (600, 300)，Boss 这一帧从 (1000,300) 走到 (600,300)，应受伤
+  if(g.player.lives >= livesBefore) throw new Error('玩家在路径中段应被线段碰撞检测到');
+});
+
 // 跑测试
 let passed = 0, failed = 0;
 for(const t of tests){

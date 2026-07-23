@@ -759,7 +759,9 @@ class Crystal{
     }
     this.x+=this.vx*dt;
     this.y+=this.vy*dt + Math.sin(this.t*3)*8*dt;
-    if(this.x<-40) this.dead=true;
+    // 使用相机相对坐标离屏回收，避免长关卡（如第六关）掉落物滞留数组
+    const camX = player ? player.game.camX : 0;
+    if(this.x < camX - 60) this.dead=true;
   }
   apply(player){
     Audio2.pickup();
@@ -811,7 +813,9 @@ class LifeDrop{
     }
     this.x+=this.vx*dt;
     this.y+=this.vy*dt + Math.sin(this.t*2.5)*9*dt;
-    if(this.x<-40) this.dead=true;
+    // 使用相机相对坐标离屏回收（避免长关卡掉落物滞留数组）
+    const camX = player ? player.game.camX : 0;
+    if(this.x < camX - 60) this.dead=true;
   }
   apply(player){
     Audio2.levelup();
@@ -873,7 +877,9 @@ class BombCrystal{
     }
     this.x+=this.vx*dt;
     this.y+=this.vy*dt + Math.sin(this.t*2.2)*9*dt;
-    if(this.x<-40) this.dead=true;
+    // 使用相机相对坐标离屏回收（避免长关卡掉落物滞留数组）
+    const camX = player ? player.game.camX : 0;
+    if(this.x < camX - 60) this.dead=true;
   }
   apply(player){
     // 可携带清屏晶体：库存满则立即触发，否则 +1 库存
@@ -1400,7 +1406,7 @@ class Wingman{
         if(Math.random()<0.25){ spawnExplosion(g.particles, e.x, beamY, col, 2, 0.4); }
       }
     }
-    if(g.boss && !g.boss.dead){
+    if(g.boss && !g.boss.dead && g.boss.entered){
       const bb=g.boss.bounds();
       if(g.boss.x+bb.w/2 >= startX && g.boss.x-bb.w/2 <= endX){
         if(bb.y <= beamY+halfH && bb.y+bb.h >= beamY-halfH){
@@ -1680,6 +1686,9 @@ class Player{
     } else {
       // 过渡中保持Y方向轻微跟随，避免突兀
       this.y += (H/2 - this.y)*3*dt;
+      // 过渡期间禁用激光视觉（updateLaser 不被调用所以无伤害，但 drawLaser 仍会渲染残留射线）
+      this.laserActive = false;
+      this.laserT = 0;
     }
 
     if(this.invincible>0) this.invincible-=dt;
@@ -1751,7 +1760,7 @@ class Player{
         }
       }
     }
-    if(g.boss && !g.boss.dead){
+    if(g.boss && !g.boss.dead && g.boss.entered){
       const bb=g.boss.bounds();
       if(g.boss.x+bb.w/2 >= startX && g.boss.x-bb.w/2 <= endX){
         if(bb.y <= beamY+halfH && bb.y+bb.h >= beamY-halfH){
@@ -1809,6 +1818,7 @@ class Player{
     }
   }
   hurt(dmg=1){
+    if(!this.alive) return false;        // 已死亡：忽略后续伤害（防止重复触发 onPlayerDead）
     if(this.invincible>0) return false;
     if(this.shieldHits>0){
       // 护盾一次性吸收整发激光子弹（无论 dmg 多少），消耗 1 层护盾
@@ -2220,7 +2230,7 @@ class Enemy{
     const dx=p.x-this.x, dy=p.y-this.y;
     const m=Math.hypot(dx,dy)||1;
     const sp=CFG.enemyBulletSpeed*0.9;
-    this.game.bullets.push(new Bullet(this.x,this.y,dx/m*sp,dy/m*sp,
+    this.game.addBullet(new Bullet(this.x,this.y,dx/m*sp,dy/m*sp,
       {w:11,h:11,dmg:1,color:COLORS.corrosive,friendly:false,corrosive:true}));
   }
   shootCorrosiveFan(n,spread){
@@ -2228,7 +2238,7 @@ class Enemy{
     const base=Math.PI;
     for(let i=0;i<n;i++){
       const a=base+(i-(n-1)/2)*spread;
-      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:11,h:11,dmg:1,color:COLORS.corrosive,friendly:false,corrosive:true}));
     }
   }
@@ -2237,7 +2247,7 @@ class Enemy{
     const dx=p.x-this.x, dy=p.y-this.y;
     const m=Math.hypot(dx,dy)||1;
     const sp=CFG.enemyBulletSpeed;
-    this.game.bullets.push(new Bullet(this.x,this.y,dx/m*sp,dy/m*sp,
+    this.game.addBullet(new Bullet(this.x,this.y,dx/m*sp,dy/m*sp,
       {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
   }
   shootFan(n,spread){
@@ -2245,7 +2255,7 @@ class Enemy{
     const base=Math.PI;
     for(let i=0;i<n;i++){
       const a=base+(i-(n-1)/2)*spread;
-      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
     }
   }
@@ -2256,7 +2266,7 @@ class Enemy{
     const sp=CFG.enemyBulletSpeed;
     for(let i=0;i<n;i++){
       const a=base+(i-(n-1)/2)*spread;
-      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
     }
   }
@@ -2266,7 +2276,7 @@ class Enemy{
     const off = Math.random()*Math.PI*2;
     for(let i=0;i<n;i++){
       const a=off+(i/n)*Math.PI*2;
-      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
     }
   }
@@ -2282,7 +2292,7 @@ class Enemy{
     const off=Math.random()*Math.PI*2;
     for(let i=0;i<n;i++){
       const a=off+(i/n)*Math.PI*2;
-      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:11,h:11,dmg:1,color:COLORS.corrosive,friendly:false,corrosive:true}));
     }
   }
@@ -2307,7 +2317,7 @@ class Enemy{
       const off = Math.random()*Math.PI*2;
       for(let i=0;i<n;i++){
         const a=(i/n)*Math.PI*2+off;
-        this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+        this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
           {w:8,h:8,dmg:1,color:'#ff5a3c',friendly:false}));
       }
       spawnExplosion(this.game.particles,this.x,this.y,'#ff5a3c',16,1.5);
@@ -3103,12 +3113,20 @@ class Boss{
         // 冲刺：朝锁定 Y + 贯穿屏幕左端 高速移动
         this.chargeDur-=dt;
         const tt = 1 - this.chargeDur/0.7;   // 0→1
+        // 记录冲刺前位置，用于线段碰撞检测（防止低帧率漏判）
+        const prevX = this.x, prevY = this.y;
         this.x = this.chargeOriginX + (this.chargeTargetX-this.chargeOriginX)*tt;
         this.y = this.chargeOriginY + (this.chargeTargetY-this.chargeOriginY)*tt;
-        // 接触玩家造成伤害（碰撞箱放大，确保覆盖整条冲刺路径）
+        // 接触玩家造成伤害——使用线段碰撞（扫掠测试），防止高帧间隔时漏判
         const p=this.game.player;
         if(p.alive && p.invincible<=0){
-          if(Math.abs(p.x-this.x) < 70 && Math.abs(p.y-this.y) < 60){
+          // 玩家到冲刺路径线段 (prevX,prevY)→(this.x,this.y) 的最短距离
+          const dx = this.x - prevX, dy = this.y - prevY;
+          const segLen2 = dx*dx + dy*dy || 1e-6;
+          let t = ((p.x - prevX)*dx + (p.y - prevY)*dy) / segLen2;
+          t = Math.max(0, Math.min(1, t));
+          const closestX = prevX + t*dx, closestY = prevY + t*dy;
+          if(Math.hypot(p.x-closestX, p.y-closestY) < 80){
             p.hurt(1);
           }
         }
@@ -3154,7 +3172,7 @@ class Boss{
           const ls = sp * (0.8+layer*0.15);
           for(let i=0;i<n;i++){
             const a=base+(i-(n-1)/2)*0.18;
-            this.game.bullets.push(new Bullet(this.x-40,this.y,Math.cos(a)*ls,Math.sin(a)*ls,
+            this.game.addBullet(new Bullet(this.x-40,this.y,Math.cos(a)*ls,Math.sin(a)*ls,
               {w:9,h:9,dmg:1,color:'#ff5a3a',friendly:false}));
           }
         }
@@ -3174,6 +3192,7 @@ class Boss{
           this.rotLaserDur=5.0;   // 持续 5 秒
           this.rotLaserAngle=0;
           this.rotLaserDir = Math.random()<0.5?1:-1;   // 随机顺/逆时针
+          this._rotLaserHurtT=0;   // 重置伤害计时器，避免跨会话立即伤害
           this.game.toast('旋转激光！跟着方向移动！');
           Audio2.laser();
         }
@@ -3201,6 +3220,9 @@ class Boss{
             this._rotLaserHurtT=0;
             p.hurt(1);
           }
+        } else {
+          // 玩家不在激光路径上：重置计时器，重新进入路径时需重新累积
+          this._rotLaserHurtT=0;
         }
         if(this.rotLaserDur<=0){
           this.rotLaserActive=false;
@@ -3238,7 +3260,8 @@ class Boss{
           ];
           let inSafe=false;
           for(const sz of safeZones){
-            if(Math.abs(p.x-sz.x)<100 && Math.abs(p.y-sz.y)<100){ inSafe=true; break; }
+            // 与绘制保持一致：圆形安全区（半径 100），避免正方形四角与圆形视觉不一致
+            if(Math.hypot(p.x-sz.x, p.y-sz.y) < 100){ inSafe=true; break; }
           }
           if(!inSafe && p.invincible<=0){
             p.hurt(1);
@@ -3342,7 +3365,7 @@ class Boss{
     // 偏移发射：与玩家方向偏 offAngle 弧度
     const ang = offset ? Math.atan2(dy,dx)+offAngle : Math.atan2(dy,dx);
     const vx=Math.cos(ang)*sp, vy=Math.sin(ang)*sp;
-    this.game.bullets.push(new Bullet(this.x-30,this.y,vx,vy,
+    this.game.addBullet(new Bullet(this.x-30,this.y,vx,vy,
       {w:14,h:14,dmg:2,color:'#ff3a3a',friendly:false,laser:true,bossLaser:true}));
   }
   summonAsteroid(){
@@ -3355,7 +3378,7 @@ class Boss{
     const base=Math.atan2(p.y-this.y, p.x-this.x);
     for(let i=0;i<count;i++){
       const a=base+(i-(count-1)/2)*0.2;
-      this.game.bullets.push(new Bullet(this.x-30,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x-30,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:10,h:10,dmg:1,color:'#ff8a3a',friendly:false,tracking:0.4,trackingTime:trackTime}));
     }
   }
@@ -3371,7 +3394,7 @@ class Boss{
       const y = (H/rows)*r + 30;
       // 避开 gap 区域
       if(Math.abs(y-gapY) < gap) continue;
-      this.game.bullets.push(new Bullet(wallX,y,-sp,0,
+      this.game.addBullet(new Bullet(wallX,y,-sp,0,
         {w:10,h:10,dmg:1,color:'#9a6aff',friendly:false}));
     }
   }
@@ -3389,7 +3412,7 @@ class Boss{
     const base=Math.atan2(p.y-this.y, p.x-this.x);
     for(let i=0;i<5;i++){
       const a=base+(i-2)*0.22;
-      this.game.bullets.push(new Bullet(this.x-30,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x-30,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:11,h:11,dmg:1,color:COLORS.corrosive,friendly:false,corrosive:true}));
     }
   }
@@ -3400,7 +3423,7 @@ class Boss{
     const base=Math.atan2(dy,dx);
     for(let i=0;i<n;i++){
       const a=base+(i-(n-1)/2)*spread;
-      this.game.bullets.push(new Bullet(this.x-40,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x-40,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:9,h:9,dmg:1,color:COLORS.enemyBullet,friendly:false}));
     }
   }
@@ -3409,7 +3432,7 @@ class Boss{
     const base=Math.PI;
     for(let i=0;i<n;i++){
       const a=base+(i-(n-1)/2)*spread;
-      this.game.bullets.push(new Bullet(this.x-40,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x-40,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:9,h:9,dmg:1,color:COLORS.enemyBullet,friendly:false}));
     }
   }
@@ -3418,7 +3441,7 @@ class Boss{
     const off=this.t*2;
     for(let i=0;i<n;i++){
       const a=(i/n)*Math.PI*2+off;
-      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:9,h:9,dmg:1,color:COLORS.enemyBullet,friendly:false}));
     }
   }
@@ -3428,7 +3451,7 @@ class Boss{
     const off=this.t*1.5;   // 每次发射有旋转偏移，让多圈不重合
     for(let i=0;i<n;i++){
       const a=(i/n)*Math.PI*2+off;
-      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:9,h:9,dmg:1,color:COLORS.boss5,friendly:false}));
     }
   }
@@ -3440,7 +3463,7 @@ class Boss{
       const armOff=(a/arms)*Math.PI*2;
       for(let i=0;i<perArm;i++){
         const ang=armOff + (i/perArm)*Math.PI*0.6 + off;   // 每支臂扇形展开
-        this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(ang)*sp,Math.sin(ang)*sp,
+        this.game.addBullet(new Bullet(this.x,this.y,Math.cos(ang)*sp,Math.sin(ang)*sp,
           {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
       }
     }
@@ -3453,7 +3476,7 @@ class Boss{
     const base=Math.atan2(dy,dx);
     for(let i=0;i<n;i++){
       const a=base+(i-(n-1)/2)*spread;
-      this.game.bullets.push(new Bullet(this.x-40,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x-40,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:8,h:8,dmg:1,color:COLORS.enemyBullet,friendly:false}));
     }
   }
@@ -3463,7 +3486,7 @@ class Boss{
     const off=this.t*3;
     for(let i=0;i<n;i++){
       const a=(i/n)*Math.PI*2+off;
-      this.game.bullets.push(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
+      this.game.addBullet(new Bullet(this.x,this.y,Math.cos(a)*sp,Math.sin(a)*sp,
         {w:7,h:7,dmg:1,color:'#ff7a8a',friendly:false}));
     }
   }
@@ -3985,6 +4008,8 @@ class Game{
     this.bossTriggered=false; this.boss=null;
     this.enemies=[]; this.obstacles=[];
     this.bullets=this.bullets.filter(b=>b.friendly);
+    // 清空拾取物与粒子，避免上一关残留影响新关卡平衡
+    this.crystals=[]; this.lifeDrops=[]; this.bombCrystals=[]; this.particles=[];
     this._obstacleOnlyToasted=false;   // 重置纯障碍段提示
     this.starfield.setTheme(L.theme);
     this.spawner=new Spawner(this,L.spawnInterval,WAVE_TEMPLATES[idx+1]);
@@ -4047,6 +4072,17 @@ class Game{
   onPlayerDead(){ this.state='GAME_OVER'; }  // playerDead 音效在 Player.hurt 中触发
 
   update(dt){
+    // 暂停切换必须在冻结前处理，否则无法恢复；但仅在游戏进行中的状态才允许暂停
+    if(Input.justPressed('p','escape')){
+      if(this.state==='PAUSED'){
+        this.state = this._prevState || 'PLAYING';
+      } else if(this.state==='PLAYING'||this.state==='BOSS'||this.state==='LEVEL_OUT'||this.state==='LEVEL_IN'||this.state==='LEVEL_CLEAR'){
+        // 暂停/恢复：保存暂停前状态，恢复时回到原状态（避免 Boss 战/过渡被中断）
+        this._prevState = this.state;
+        this.state = 'PAUSED';
+      }
+    }
+    if(this.state==='PAUSED') return;   // 暂停时完全冻结（含星空背景）
     const bgSpeed=(this.state==='PLAYING'||this.state==='BOSS')?this.level.scrollSpeed:40;
     this.starfield.update(dt,bgSpeed);
 
@@ -4074,8 +4110,6 @@ class Game{
       }
       return;
     }
-    if(Input.justPressed('p','escape')){ this.state = this.state==='PAUSED'?'PLAYING':'PAUSED'; }
-    if(this.state==='PAUSED') return;
 
     if(this.shake>0) this.shake-=dt;
     if(this.flash>0) this.flash-=dt;
@@ -4112,7 +4146,8 @@ class Game{
     this.obstacles=this.obstacles.filter(o=>!o.dead);
 
     if(this.boss){
-      this.boss.update(dt);
+      // Boss 已死亡则不再 update（避免死亡那帧仍造成激光/能量波伤害）
+      if(!this.boss.dead) this.boss.update(dt);
       if(this.boss.dead){
         // Boss 死亡瞬间清屏：清空敌方子弹、残留小怪与障碍，防止死后中弹
         this.bullets=this.bullets.filter(b=>b.friendly);
@@ -4227,8 +4262,8 @@ class Game{
         if(b.dead) break;
       }
       if(blocked) continue;
-      // vs Boss
-      if(this.boss && !this.boss.dead){
+      // vs Boss（入场动画期间不可被攻击）
+      if(this.boss && !this.boss.dead && this.boss.entered){
         const core=this.boss.coreBounds();
         const body=this.boss.bounds();
         if(aabb(bb,core)){
@@ -4275,15 +4310,17 @@ class Game{
       if(e.dead) continue;
       if(aabb(pb,e.bounds())){ e.takeDamage(99); if(p.hurt()) break; }
     }
-    // Boss vs 玩家
-    if(this.boss && !this.boss.dead && aabb(pb,this.boss.bounds())) p.hurt();
+    // Boss vs 玩家（入场动画期间不伤害玩家）
+    if(this.boss && !this.boss.dead && this.boss.entered && aabb(pb,this.boss.bounds())) p.hurt();
     // 障碍物 vs 玩家
     for(const o of this.obstacles){
       for(const hb of o.hitBoxes()){
         if(aabb(pb,hb)){ if(p.hurt()) break; }
       }
-      if(p.invincible>0 && p.invincible<0.1) break; // 已受伤跳出
+      if(p.invincible>0) break; // 已受伤跳出，避免后续障碍物重复调用 hurt()
     }
+    // 玩家在本帧已死亡：跳过拾取，避免死后的副作用（如浪费生命补给、误触清屏）
+    if(!p.alive) return;
     // 晶体拾取（满上限后碰到直接消失）
     for(const c of this.crystals){
       if(c.dead) continue;
